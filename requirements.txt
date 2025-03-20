@@ -1,0 +1,7 @@
+PyQt6
+pdf2image
+Pillow
+opencv-python
+pandas
+pytesseract
+pymupdf
