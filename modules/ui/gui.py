@@ -8,8 +8,6 @@ from PyQt6.QtWidgets import (
     QSplitter, QFormLayout, QComboBox, QSlider, QHBoxLayout, QMessageBox,
     QToolButton, QGraphicsOpacityEffect, QSpacerItem, QSizePolicy
 )
-
-# Importa a função de conversão para contar páginas
 from modules.core.converter import converter_pdf_em_imagens
 from modules.core.workers import ProcessWorker
 from modules.core.dialogs import ResultadoDialog
@@ -79,7 +77,6 @@ class GabaritoApp(QMainWindow):
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(10)
 
-        # Logo
         logo_label = QLabel()
         logo_pixmap = QPixmap("assets/ideedutec_icon.png")
         logo_label.setPixmap(
@@ -121,7 +118,6 @@ class GabaritoApp(QMainWindow):
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(20)
 
-        # InfoCards – Note que o segundo card foi alterado para "Total de Páginas"
         self.card_pdfs = InfoCard("PDFs Selecionados", "0", "pdf", "#3b82f6")
         self.card_questoes = InfoCard("Total de Páginas", "0", "question", "#10b981")
         self.card_status = InfoCard("Status", "Aguardando", "status", "#f59e0b")
@@ -494,25 +490,23 @@ class GabaritoApp(QMainWindow):
         self.atualizar_status(f"{len(files)} arquivo(s) selecionado(s).")
         self.card_pdfs.set_value(len(files))
 
-        # Para cada PDF, abre com DPI baixo para contar as páginas reais
         total_paginas = 0
         for pdf in files:
             try:
-                # Usamos DPI baixo para acelerar a contagem de páginas
                 paginas = converter_pdf_em_imagens(pdf, dpi=50)
                 total_paginas += len(paginas)
             except Exception as e:
-                total_paginas += 0  # Se der erro, soma zero
+                total_paginas += 0  
 
         self.card_questoes.set_value(total_paginas)
 
-        # Limpa os thumbnails anteriores
+        # Limpa os thumbnails
         for i in reversed(range(self.thumb_layout.count())):
             item = self.thumb_layout.itemAt(i)
             if item and item.widget():
                 item.widget().deleteLater()
 
-        # Exibe thumbnails dos PDFs
+        # Exibe thumbnails/miniaturas dos PDFs(ainda em produção)
         row, col = 0, 0
         max_cols = 3
         for idx, p in enumerate(files):
