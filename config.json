@@ -3,9 +3,12 @@
     "dpi_processamento": 300,
     "threshold_fill": 0.25,
     "caminho_saida": "resultados.xlsx",
-    "template_path": "assets/template_gabarito.png",
+    "template_path": "template_gabarito.png",
     "largura_corrigida": 1890,
     "altura_corrigida": 864,
+    "matricula_template_path": "matricula_template.png",
+    "matricula_template_threshold": 0.25,
+
     "grid_rois": [
         [
             { "x": 161, "y": 36,  "width": 405, "height": 72 },

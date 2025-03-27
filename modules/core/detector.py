@@ -27,6 +27,10 @@ def desenhar_rois_em_imagem(imagem, grid_rois, color=(255, 0, 0), width=2):
     return imagem
 
 def detectar_area_gabarito_template(imagem, template):
+    """
+    Localiza o template do gabarito e retorna (pts, score).
+    pts são os 4 pontos do retângulo [top-left, top-right, bottom-right, bottom-left].
+    """
     img_gray = np.array(imagem.convert("L"))
     template_gray = np.array(template.convert("L"))
     res = cv2.matchTemplate(img_gray, template_gray, cv2.TM_CCOEFF_NORMED)
@@ -34,8 +38,32 @@ def detectar_area_gabarito_template(imagem, template):
     h, w = template_gray.shape
     top_left = max_loc
     bottom_right = (top_left[0] + w, top_left[1] + h)
-    pts = [top_left, (bottom_right[0], top_left[1]),
-           bottom_right, (top_left[0], bottom_right[1])]
+    pts = [
+        top_left,
+        (bottom_right[0], top_left[1]),
+        bottom_right,
+        (top_left[0], bottom_right[1])
+    ]
+    return pts, max_val
+
+def detectar_area_cabecalho_template(imagem, template):
+    """
+    Localiza o template do cabeçalho (matrícula) e retorna (pts, score).
+    A lógica é igual à do gabarito, só muda o nome para ficar claro.
+    """
+    img_gray = np.array(imagem.convert("L"))
+    template_gray = np.array(template.convert("L"))
+    res = cv2.matchTemplate(img_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+    h, w = template_gray.shape
+    top_left = max_loc
+    bottom_right = (top_left[0] + w, top_left[1] + h)
+    pts = [
+        top_left,
+        (bottom_right[0], top_left[1]),
+        bottom_right,
+        (top_left[0], bottom_right[1])
+    ]
     return pts, max_val
 
 def detectar_respostas_por_grid(
@@ -43,11 +71,11 @@ def detectar_respostas_por_grid(
     grid_rois,
     num_alternativas=4,
     threshold_fill=0.3,
-    debug=False,
+    debug=True,
     debug_folder=None
 ):
     """
-    Usa Otsu + morfologia para melhorar a detecção.
+    Detecta as respostas em formato de grade (bubbles).
     """
     if num_alternativas == 4:
         alternativas = ['A','B','C','D']
@@ -74,7 +102,6 @@ def detectar_respostas_por_grid(
     if debug and debug_folder:
         bin_filename = os.path.join(debug_bin_dir, "debug_imagem_bin_grid.png")
         cv2.imwrite(bin_filename, imagem_bin)
-        print(f"[LOG] Imagem binarizada salva em: {bin_filename}")
     
     resultados = {}
     questao_num = 1
@@ -94,7 +121,6 @@ def detectar_respostas_por_grid(
             if debug and debug_folder:
                 roi_filename = os.path.join(debug_rois_dir, f"debug_grid_roi_{questao_num}.png")
                 cv2.imwrite(roi_filename, roi_img)
-                print(f"[LOG] ROI {questao_nome} salva em: {roi_filename}")
             
             sub_w = w // num_alternativas
             fill_ratios = []
@@ -109,14 +135,12 @@ def detectar_respostas_por_grid(
                     alt_filename = f"debug_grid_roi_{questao_num}_alt_{alternativas[alt_i]}.png"
                     alt_file_path = os.path.join(debug_subrois_dir, alt_filename)
                     cv2.imwrite(alt_file_path, sub_roi)
-                    print(f"[LOG] ROI {questao_nome} alternativa {alternativas[alt_i]} salva em: {alt_file_path}")
-                    print(f"[LOG] {questao_nome} alt {alternativas[alt_i]}: ratio={ratio:.2f}")
-            
+                
             marcadas = [i for i, r in enumerate(fill_ratios) if r >= threshold_fill]
             if len(marcadas) == 0:
                 resultado = f"Não marcado (max fill: {max(fill_ratios):.2f})"
             elif len(marcadas) > 1:
-                resultado = "Questão anulada"
+                resultado = "N"
             else:
                 resultado = alternativas[marcadas[0]]
             
