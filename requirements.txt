@@ -5,3 +5,5 @@ opencv-python
 pandas
 pytesseract
 pymupdf
+reportlab
+pymupdf

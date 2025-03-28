@@ -38,7 +38,6 @@ class ModernButton(QPushButton):
         Caso seja secundário, usamos o estilo cinza-azul.
         """
         if self.primary:
-            # Botão principal (verde)
             self.setStyleSheet("""
                 QPushButton {
                     /* Gradiente principal: #10b981 → #059669 */
@@ -65,7 +64,6 @@ class ModernButton(QPushButton):
                 }
             """)
         else:
-            # Botão secundário para o caso de precisar usar(esse é cinza-escuro)
             self.setStyleSheet("""
                 QPushButton {
                     background-color: #f1f5f9;

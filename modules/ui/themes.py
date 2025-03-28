@@ -1,5 +1,3 @@
-# modules/themes.py
-
 from PyQt6.QtWidgets import QStyleFactory
 from PyQt6.QtGui import QPalette, QColor
 
@@ -255,18 +253,18 @@ class Temas:
     def tema_escuro(app):
         app.setStyle(QStyleFactory.create("Fusion"))
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(15, 23, 42))         # Slate 900
-        palette.setColor(QPalette.ColorRole.WindowText, QColor(241, 245, 249))  # Slate 100
-        palette.setColor(QPalette.ColorRole.Base, QColor(30, 41, 59))           # Slate 800
-        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(51, 65, 85))  # Slate 700
-        palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(15, 23, 42))    # Slate 900
-        palette.setColor(QPalette.ColorRole.ToolTipText, QColor(241, 245, 249)) # Slate 100
-        palette.setColor(QPalette.ColorRole.Text, QColor(241, 245, 249))        # Slate 100
-        palette.setColor(QPalette.ColorRole.Button, QColor(30, 41, 59))         # Slate 800
-        palette.setColor(QPalette.ColorRole.ButtonText, QColor(241, 245, 249))  # Slate 100
-        palette.setColor(QPalette.ColorRole.Link, QColor(96, 165, 250))         # Blue 400
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(59, 130, 246))    # Blue 500
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(241, 245, 249)) # Slate 100
+        palette.setColor(QPalette.ColorRole.Window, QColor(15, 23, 42))        
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(241, 245, 249))  
+        palette.setColor(QPalette.ColorRole.Base, QColor(30, 41, 59))           
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(51, 65, 85))  
+        palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(15, 23, 42))    
+        palette.setColor(QPalette.ColorRole.ToolTipText, QColor(241, 245, 249)) 
+        palette.setColor(QPalette.ColorRole.Text, QColor(241, 245, 249))        
+        palette.setColor(QPalette.ColorRole.Button, QColor(30, 41, 59))         
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(241, 245, 249))  
+        palette.setColor(QPalette.ColorRole.Link, QColor(96, 165, 250))         
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(59, 130, 246))    
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(241, 245, 249)) 
         app.setPalette(palette)
 
         style = """
