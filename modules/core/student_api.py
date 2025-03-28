@@ -1,12 +1,10 @@
 import requests
 
-# Defina o BASE_URL com https:// e sem repetir “/student/search”
 BASE_URL = "https://new-api.ideedutec.com"
 
 def listar_escolas():
     """
-    Exemplo de função que chama GET /school para obter a lista de escolas.
-    Ajuste o endpoint e o formato do retorno conforme seu back-end.
+    Chama GET /school para obter a lista de escolas.
     """
     url = f"{BASE_URL}/school"
     try:
@@ -18,6 +16,10 @@ def listar_escolas():
         return []
 
 def buscar_estudante(enrollment, base_url=BASE_URL):
+    """
+    Busca um estudante específico via matrícula.
+    O endpoint retorna um objeto com a chave 'data' contendo uma lista.
+    """
     url = f"{base_url}/student/search"
     params = {"enrollments": enrollment}
     print(f"[DEBUG] Requisição: {url} com parâmetros: {params}")
@@ -25,9 +27,9 @@ def buscar_estudante(enrollment, base_url=BASE_URL):
         response = requests.get(url, params=params)
         print(f"[DEBUG] Status Code: {response.status_code}")
         if response.status_code == 200:
-            data = response.json()
-            if isinstance(data, list) and data:
-                return data[0]
+            json_data = response.json()
+            if "data" in json_data and isinstance(json_data["data"], list) and json_data["data"]:
+                return json_data["data"][0]
             return {}
         elif response.status_code == 204:
             return {}
@@ -40,16 +42,16 @@ def buscar_estudante(enrollment, base_url=BASE_URL):
 
 def buscar_estudantes_via_names(names):
     """
-    Chama GET /student/search?names={names}, retornando uma lista de alunos (ou lista vazia).
+    Busca estudantes pelo nome.
     """
     url = f"{BASE_URL}/student/search"
     params = {"names": names}
     try:
         resp = requests.get(url, params=params)
         if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, list):
-                return data
+            json_data = resp.json()
+            if "data" in json_data and isinstance(json_data["data"], list):
+                return json_data["data"]
             return []
         elif resp.status_code == 204:
             return []

@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -21,6 +22,18 @@ class WorkerSignals(QObject):
     finished = pyqtSignal(list)
     message = pyqtSignal(str)
     error = pyqtSignal(str)
+
+# Função auxiliar para pré-processamento alternativo quando o documento é scaneado por uma impressora
+def preprocess_roi(roi_pil):
+    """
+    Converte a ROI para escala de cinza, aplica equalização e outros ajustes,
+    buscando realçar os dígitos para uma melhor extração.
+    """
+    roi_gray = np.array(roi_pil.convert("L"))
+    # (Opcional) Você pode incluir aqui outros filtros se necessário,
+    # ex: GaussianBlur, limiarização adaptativa etc.
+    roi_eq = cv2.equalizeHist(roi_gray)
+    return Image.fromarray(roi_eq)
 
 class ProcessWorker(QRunnable):
     def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido):
@@ -61,7 +74,7 @@ class ProcessWorker(QRunnable):
                     logger.error(msg)
                     continue
 
-                # Guarda uma cópia da imagem original para debug e extração da matrícula
+                # Guarda cópia das imagens originais para debug e extração da matrícula
                 imagens_originais = list(imagens)
 
                 pts_ref = None
@@ -106,7 +119,7 @@ class ProcessWorker(QRunnable):
                         grid_rois=grid_rois,
                         num_alternativas=self.n_alternativas,
                         threshold_fill=threshold_fill,
-                        debug=False,  # Não polui o cmd com logs de ROI
+                        debug=False, 
                         debug_folder=debug_subdir
                     )
                     respostas_ordenadas = {}
@@ -118,11 +131,14 @@ class ProcessWorker(QRunnable):
 
                     pil_img_original = imagens_originais[i]
                     matricula_texto = ""
+                    dados_api = {}
                     if "matricula_roi" in self.config:
                         from pytesseract import image_to_string, Output
                         try:
                             x, y, w, h = self.config["matricula_roi"].values()
                             roi_matricula = pil_img_original.crop((x, y, x+w, y+h))
+                            if self.config.get("scanned_by_printer", True):
+                                roi_matricula = preprocess_roi(roi_matricula)
                             config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
                             matricula_texto = image_to_string(roi_matricula, config=config_tess, output_type=Output.STRING).strip()
                             logger.info(f"[Worker] Matrícula (ROI fixa) lida: '{matricula_texto}'")
@@ -136,39 +152,43 @@ class ProcessWorker(QRunnable):
                         from modules.core.detector import detectar_area_cabecalho_template
                         try:
                             temp_cab = Image.open(self.config["matricula_template_path"])
-                            img_gray = np.array(pil_img_original.convert("L"))
+                            pil_img_gray = pil_img_original.convert("L")
+                            img_gray_np = np.array(pil_img_gray)
+                            img_gray_eq = cv2.equalizeHist(img_gray_np)
+                            pil_img_eq = Image.fromarray(img_gray_eq)
+
                             template_gray = np.array(temp_cab.convert("L"))
-                            logger.debug(f"[DEBUG] Original image size: {img_gray.shape}, Template size: {template_gray.shape}")
+                            logger.debug(f"[DEBUG] Tamanho da imagem equalizada: {img_gray_eq.shape}, tamanho do template: {template_gray.shape}")
                             
-                            if template_gray.shape[0] > img_gray.shape[0] or template_gray.shape[1] > img_gray.shape[1]:
-                                scale = min(img_gray.shape[0] / template_gray.shape[0], img_gray.shape[1] / template_gray.shape[1])
+                            if template_gray.shape[0] > img_gray_eq.shape[0] or template_gray.shape[1] > img_gray_eq.shape[1]:
+                                scale = min(img_gray_eq.shape[0] / template_gray.shape[0], img_gray_eq.shape[1] / template_gray.shape[1])
                                 new_size = (int(template_gray.shape[1] * scale), int(template_gray.shape[0] * scale))
-                                logger.debug(f"[DEBUG] Resizing template to: {new_size}")
+                                logger.debug(f"[DEBUG] Redimensionando template para: {new_size}")
                                 temp_cab = temp_cab.resize(new_size)
                                 template_gray = np.array(temp_cab.convert("L"))
                             
-                            pts_cab, score_cab = detectar_area_cabecalho_template(pil_img_original, temp_cab)
-                            logger.debug(f"[DEBUG] Template matching score (header): {score_cab:.2f}")
-                            logger.debug(f"[DEBUG] Header points: {pts_cab}")
+                            pts_cab, score_cab = detectar_area_cabecalho_template(pil_img_eq, temp_cab)
+                            logger.debug(f"[DEBUG] Score do template matching do cabeçalho: {score_cab:.2f}")
+                            logger.debug(f"[DEBUG] Pontos do cabeçalho encontrados: {pts_cab}")
                             
                             xs = [p[0] for p in pts_cab]
                             ys = [p[1] for p in pts_cab]
                             x_min, x_max = min(xs), max(xs)
                             y_min, y_max = min(ys), max(ys)
                             
-                            # Salva a ROI calculada para debug
                             debug_roi_path = os.path.join(debug_subdir, "debug_matricula_roi_template.png")
                             pil_img_original.crop((x_min, y_min, x_max, y_max)).save(debug_roi_path)
-                            logger.debug(f"[DEBUG] ROI da matrícula (template) saved: {debug_roi_path}")
+                            logger.debug(f"[DEBUG] ROI da matrícula (template) salva: {debug_roi_path}")
                             
                             thr_cab = self.config.get("matricula_template_threshold", 0.5)
                             if score_cab >= thr_cab:
                                 roi_matricula = pil_img_original.crop((x_min, y_min, x_max, y_max))
-                                # Salva a ROI que será utilizada para o OCR
                                 debug_roi_ocr_path = os.path.join(debug_subdir, "debug_matricula_roi_used.png")
                                 roi_matricula.save(debug_roi_ocr_path)
                                 logger.debug(f"[DEBUG] ROI for OCR saved: {debug_roi_ocr_path}")
                                 
+                                if self.config.get("scanned_by_printer", False):
+                                    roi_matricula = preprocess_roi(roi_matricula)
                                 config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
                                 matricula_texto = image_to_string(roi_matricula, config=config_tess, output_type=Output.STRING).strip()
                                 logger.info(f"[Worker] Matrícula (template-cabeçalho) lida: '{matricula_texto}'")
@@ -187,6 +207,12 @@ class ProcessWorker(QRunnable):
                         try:
                             dados_api = buscar_estudante(matricula_texto)
                             logger.info(f"[Worker] API returned for {matricula_texto}: {dados_api}")
+                            if dados_api:
+                                info_ocr["nome_aluno"] = dados_api.get("name", info_ocr.get("nome_aluno", ""))
+                                info_ocr["escola"] = dados_api.get("school", info_ocr.get("escola", ""))
+                                info_ocr["turma"] = dados_api.get("class", info_ocr.get("turma", ""))
+                            else:
+                                logger.debug(f"[Worker] API não retornou dados para matrícula {matricula_texto}")
                         except Exception as e:
                             logger.error(f"Erro na busca do estudante: {e}")
                             self.signals.message.emit(f"Aviso: falha ao buscar estudante: {e}")
@@ -201,7 +227,7 @@ class ProcessWorker(QRunnable):
                             "escola": info_ocr.get("escola", ""),
                             "turma": info_ocr.get("turma", ""),
                             "matricula": matricula_texto,
-                            "dados_api": {}  # dados_api já processados acima
+                            "dados_api": dados_api
                         }
                     }
                     all_pages.append(page_dict)

@@ -2,7 +2,6 @@ import pandas as pd
 from openpyxl import load_workbook
 
 def encontrar_proxima_linha_vazia(ws, linha_inicial=30):
-    # Colunas de respostas (I até AH)
     resposta_cols = ["I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
                      "S", "T", "U", "V", "W", "X", "Y", "Z", "AA", "AB",
                      "AC", "AD", "AE", "AF", "AG", "AH"]
@@ -56,7 +55,6 @@ def importar_para_planilha(dados, caminho_template):
         respostas = item.get("Respostas", {})
         ocr_info = item.get("OCR", {})
         
-        # Busca a primeira linha com as colunas de respostas vazias (I até AH)
         row_inicial = encontrar_proxima_linha_vazia(ws, linha_inicial=30)
 
         matricula_val = ocr_info.get("matricula", "N/A")
