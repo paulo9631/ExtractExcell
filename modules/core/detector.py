@@ -29,7 +29,6 @@ def desenhar_rois_em_imagem(imagem, grid_rois, color=(255, 0, 0), width=2):
 def detectar_area_gabarito_template(imagem, template):
     """
     Localiza o template do gabarito e retorna (pts, score).
-    pts são os 4 pontos do retângulo [top-left, top-right, bottom-right, bottom-left].
     """
     img_gray = np.array(imagem.convert("L"))
     template_gray = np.array(template.convert("L"))
@@ -49,7 +48,6 @@ def detectar_area_gabarito_template(imagem, template):
 def detectar_area_cabecalho_template(imagem, template):
     """
     Localiza o template do cabeçalho (matrícula) e retorna (pts, score).
-    A lógica é igual à do gabarito, só muda o nome para ficar claro.
     """
     img_gray = np.array(imagem.convert("L"))
     template_gray = np.array(template.convert("L"))
@@ -76,12 +74,16 @@ def detectar_respostas_por_grid(
 ):
     """
     Detecta as respostas em formato de grade (bubbles).
+    Usa threshold Otsu e operações morfológicas (close, open).
+
+    Se num_alternativas=5, as alternativas serão A, B, C, D, E.
     """
     if num_alternativas == 4:
         alternativas = ['A','B','C','D']
     else:
         alternativas = ['A','B','C','D','E']
     
+    # Debug dirs
     if debug and debug_folder:
         os.makedirs(debug_folder, exist_ok=True)
         debug_bin_dir = os.path.join(debug_folder, "bin")
@@ -90,21 +92,37 @@ def detectar_respostas_por_grid(
         os.makedirs(debug_bin_dir, exist_ok=True)
         os.makedirs(debug_rois_dir, exist_ok=True)
         os.makedirs(debug_subrois_dir, exist_ok=True)
-    
+        
+        # Salva a imagem colorida de entrada
+        step1_color = os.path.join(debug_bin_dir, "debug_step1_color.png")
+        imagem.save(step1_color)
+
+    # Converte para escala de cinza
     imagem_gray = imagem.convert("L")
+    if debug and debug_folder:
+        step2_gray = os.path.join(debug_bin_dir, "debug_step2_gray.png")
+        imagem_gray.save(step2_gray)
+
+    # Threshold Otsu invertido
     imagem_np = np.array(imagem_gray)
     _, imagem_bin = cv2.threshold(imagem_np, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    
+    if debug and debug_folder:
+        step3_thresh = os.path.join(debug_bin_dir, "debug_step3_threshold.png")
+        cv2.imwrite(step3_thresh, imagem_bin)
 
+    # Morfologia
     kernel = np.ones((3,3), np.uint8)
     imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_CLOSE, kernel, iterations=1)
     imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_OPEN, kernel, iterations=1)
-    
+
     if debug and debug_folder:
-        bin_filename = os.path.join(debug_bin_dir, "debug_imagem_bin_grid.png")
-        cv2.imwrite(bin_filename, imagem_bin)
-    
+        step4_morph = os.path.join(debug_bin_dir, "debug_step4_morph.png")
+        cv2.imwrite(step4_morph, imagem_bin)
+
     resultados = {}
     questao_num = 1
+
     for col_rois in grid_rois:
         for roi in col_rois:
             questao_nome = f"Questao {questao_num}"
@@ -121,7 +139,7 @@ def detectar_respostas_por_grid(
             if debug and debug_folder:
                 roi_filename = os.path.join(debug_rois_dir, f"debug_grid_roi_{questao_num}.png")
                 cv2.imwrite(roi_filename, roi_img)
-            
+
             sub_w = w // num_alternativas
             fill_ratios = []
             for alt_i in range(num_alternativas):
@@ -130,12 +148,11 @@ def detectar_respostas_por_grid(
                 count_white = cv2.countNonZero(sub_roi)
                 ratio = count_white / area_sub if area_sub > 0 else 0
                 fill_ratios.append(ratio)
-                
                 if debug and debug_folder:
                     alt_filename = f"debug_grid_roi_{questao_num}_alt_{alternativas[alt_i]}.png"
                     alt_file_path = os.path.join(debug_subrois_dir, alt_filename)
                     cv2.imwrite(alt_file_path, sub_roi)
-                
+            
             marcadas = [i for i, r in enumerate(fill_ratios) if r >= threshold_fill]
             if len(marcadas) == 0:
                 resultado = f"Não marcado (max fill: {max(fill_ratios):.2f})"
