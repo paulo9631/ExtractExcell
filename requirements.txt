@@ -7,3 +7,6 @@ pytesseract
 pymupdf
 reportlab
 pymupdf
+requests
+opencv
+openpyxl

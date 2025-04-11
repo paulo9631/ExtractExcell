@@ -2,6 +2,53 @@ import requests
 
 BASE_URL = "https://new-api.ideedutec.com"
 
+# student_api.py
+
+import requests
+import logging
+
+BASE_URL = "https://new-api.ideedutec.com"
+
+# Crie (ou utilize) um logger para este módulo
+logger = logging.getLogger(__name__)
+
+def login_api(email, senha, base_url=BASE_URL):
+    """
+    Faz a requisição POST para /auth/login e retorna accessToken e refreshToken.
+    """
+    url = f"{base_url}/auth/login"
+    payload = {
+        "login": email,
+        "password": senha
+    }
+    try:
+        # Log informando que vamos enviar a requisição e qual o payload
+        logger.info(f"[LOGIN_API] Enviando POST para {url} com payload={payload}")
+        
+        response = requests.post(url, json=payload)
+        
+        # Log dos dados da resposta
+        logger.info(f"[LOGIN_API] Resposta HTTP {response.status_code} - {response.text}")
+        
+        # Levanta exceção se a resposta indicar erro (>=400)
+        response.raise_for_status()
+        
+        data = response.json()
+        access_token = data.get("accessToken")
+        refresh_token = data.get("refreshToken")
+        
+        logger.info(f"[LOGIN_API] accessToken={access_token}, refreshToken={refresh_token}")
+        
+        return access_token, refresh_token
+    except requests.HTTPError as http_err:
+        logger.error(f"[LOGIN_API] HTTPError: {http_err}")
+        msg = f"Falha na autenticação (HTTP {response.status_code}): {response.text}"
+        raise Exception(msg) from http_err
+    except Exception as e:
+        logger.error(f"[LOGIN_API] Erro geral: {e}")
+        raise Exception(f"Erro na requisição de login: {e}")
+
+
 def listar_escolas():
     """
     Chama GET /school para obter a lista de escolas.
