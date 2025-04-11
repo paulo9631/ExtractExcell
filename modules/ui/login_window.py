@@ -23,7 +23,6 @@ class LoginWindow(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-       
         card_widget = QFrame()
         card_widget.setObjectName("card")
         card_widget.setStyleSheet("""
@@ -146,7 +145,6 @@ class LoginWindow(QDialog):
 
         self.setStyleSheet("""
             QDialog {
-                /* Exemplo: background com imagem centralizada e coberta (cover) */
                 background: qlineargradient(
                     x1:0, y1:0, x2:0, y2:1,
                     stop:0 rgba(255,255,255,0.4), stop:1 rgba(255,255,255,0.4)
@@ -170,19 +168,22 @@ class LoginWindow(QDialog):
 
     def fazer_login(self):
         """
-        Lógica simples: se e-mail e senha não estiverem vazios, login é OK.
+        Verifica as credenciais: se o e-mail for "admin@ideedutec.com.br"
+        e a senha "admin123", o login é bem-sucedido. Caso contrário, 
+        exibe uma mensagem de erro.
         """
         email = self.input_email.text().strip()
         senha = self.input_senha.text().strip()
 
-        if email and senha:
+        # Credenciais hard-coded para validação simples
+        if email == "avaliacoesdiagnosticas@educa.milha.ce.gov.br" and senha == "admin123":
             QMessageBox.information(self, "Sucesso", "Login bem-sucedido!")
-            self.accept()
+            self.accept()  # Fecha a janela de login e permite continuar
         else:
             QMessageBox.warning(
                 self,
                 "Erro",
-                "E-mail ou senha inválidos.\nPor favor, preencha ambos os campos."
+                "E-mail ou senha inválidos.\nPor favor, verifique suas credenciais."
             )
 
 if __name__ == "__main__":
