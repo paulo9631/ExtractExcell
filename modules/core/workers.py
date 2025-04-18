@@ -11,9 +11,12 @@ from modules.core.detector import (
     detectar_respostas_por_grid,
     corrigir_perspectiva,
     detectar_area_gabarito_template,
-    detectar_area_cabecalho_template  # função para cabeçalho
+    detectar_area_cabecalho_template,
+    detectar_matricula_por_contornos,
+    detectar_matricula_por_hough,
+    pre_processar_imagem
 )
-from modules.core.text_extractor import extrair_info_ocr
+from modules.core.text_extractor import extrair_info_ocr, extrair_matricula, extrair_matricula_avancado
 from modules.core.student_api import buscar_estudante
 from modules.utils import logger
 
@@ -30,10 +33,73 @@ def preprocess_roi(roi_pil):
     buscando realçar os dígitos para uma melhor extração.
     """
     roi_gray = np.array(roi_pil.convert("L"))
-    # (Opcional) Você pode incluir aqui outros filtros se necessário,
-    # ex: GaussianBlur, limiarização adaptativa etc.
+    
+    # Aplica blur para reduzir ruído
+    roi_gray = cv2.GaussianBlur(roi_gray, (3, 3), 0)
+    
+    # Equalização de histograma
     roi_eq = cv2.equalizeHist(roi_gray)
-    return Image.fromarray(roi_eq)
+    
+    # CLAHE para melhorar ainda mais o contraste
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    roi_eq = clahe.apply(roi_eq)
+    
+    # Threshold adaptativo
+    roi_bin = cv2.adaptiveThreshold(
+        roi_eq, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY, 11, 2
+    )
+    
+    return Image.fromarray(roi_bin)
+
+def preprocess_roi_avancado(roi_pil, debug_folder=None, idx=0):
+    """
+    Pré-processamento avançado para ROIs de matrícula.
+    Aplica múltiplas técnicas e retorna a melhor versão.
+    
+    Args:
+        roi_pil: Imagem PIL da ROI
+        debug_folder: Pasta para salvar imagens de debug
+        idx: Índice para nomear arquivos de debug
+        
+    Returns:
+        Imagem PIL pré-processada
+    """
+    # Converte para escala de cinza
+    roi_gray = np.array(roi_pil.convert("L"))
+    
+    # Versão 1: Equalização de histograma + blur
+    roi_eq = cv2.equalizeHist(roi_gray)
+    roi_eq = cv2.GaussianBlur(roi_eq, (3, 3), 0)
+    
+    # Versão 2: CLAHE para melhorar o contraste local
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    roi_clahe = clahe.apply(roi_gray)
+    
+    # Versão 3: Binarização com Otsu
+    _, roi_bin = cv2.threshold(roi_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # Versão 4: Binarização adaptativa
+    roi_bin_adapt = cv2.adaptiveThreshold(
+        roi_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY, 11, 2
+    )
+    
+    # Versão 5: Binarização adaptativa + operações morfológicas
+    kernel = np.ones((2, 2), np.uint8)
+    roi_morph = cv2.morphologyEx(roi_bin_adapt, cv2.MORPH_CLOSE, kernel)
+    roi_morph = cv2.morphologyEx(roi_morph, cv2.MORPH_OPEN, kernel)
+    
+    # Salva as versões para debug
+    if debug_folder:
+        cv2.imwrite(os.path.join(debug_folder, f"matricula_eq_{idx}.png"), roi_eq)
+        cv2.imwrite(os.path.join(debug_folder, f"matricula_clahe_{idx}.png"), roi_clahe)
+        cv2.imwrite(os.path.join(debug_folder, f"matricula_bin_{idx}.png"), roi_bin)
+        cv2.imwrite(os.path.join(debug_folder, f"matricula_bin_adapt_{idx}.png"), roi_bin_adapt)
+        cv2.imwrite(os.path.join(debug_folder, f"matricula_morph_{idx}.png"), roi_morph)
+    
+    # Retorna a versão que geralmente funciona melhor para OCR de dígitos
+    return Image.fromarray(roi_morph)
 
 class ProcessWorker(QRunnable):
     def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido):
@@ -43,6 +109,149 @@ class ProcessWorker(QRunnable):
         self.n_alternativas = n_alternativas
         self.dpi_escolhido = dpi_escolhido
         self.signals = WorkerSignals()
+
+    def extrair_matricula_com_multiplas_estrategias(self, imagem_original, debug_subdir):
+        """
+        Tenta extrair a matrícula usando múltiplas estratégias, retornando o melhor resultado.
+        
+        Args:
+            imagem_original: Imagem PIL original
+            debug_subdir: Diretório para salvar imagens de debug
+            
+        Returns:
+            Texto da matrícula extraído
+        """
+        from pytesseract import image_to_string, Output
+        
+        resultados = []
+        
+        # Estratégia 1: Usar ROI fixa se configurada
+        if "matricula_roi" in self.config:
+            try:
+                x, y, w, h = self.config["matricula_roi"].values()
+                roi_matricula = imagem_original.crop((x, y, x+w, y+h))
+                
+                # Aplica pré-processamento avançado
+                roi_processada = preprocess_roi_avancado(roi_matricula, debug_subdir, 1)
+                
+                # Salva a ROI processada para debug
+                roi_processada.save(os.path.join(debug_subdir, "matricula_roi_processada_1.png"))
+                
+                # Configuração específica para dígitos
+                config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
+                matricula = image_to_string(roi_processada, config=config_tess, output_type=Output.STRING).strip()
+                matricula = ''.join(c for c in matricula if c.isdigit())
+                
+                logger.info(f"[Worker] Matrícula (ROI fixa) lida: '{matricula}'")
+                if matricula.isdigit() and len(matricula) >= 5:
+                    resultados.append((matricula, 0.9))  # Alta confiança para ROI fixa
+            except Exception as e:
+                logger.error(f"Erro na extração da matrícula (ROI fixa): {e}")
+        
+        # Estratégia 2: Usar template matching
+        if "matricula_template_path" in self.config:
+            try:
+                temp_cab = Image.open(self.config["matricula_template_path"])
+                
+                # Pré-processa a imagem para melhorar a detecção
+                pil_img_proc = pre_processar_imagem(imagem_original, equalizar=True, ajustar_contraste=True)
+                
+                # Detecta o template com multi-escala e rotações
+                pts_cab, score_cab = detectar_area_cabecalho_template(
+                    pil_img_proc, temp_cab, 
+                    pre_processar=True, 
+                    multi_escala=True,
+                    rotacoes=True
+                )
+                
+                logger.debug(f"[DEBUG] Score do template matching do cabeçalho: {score_cab:.2f}")
+                
+                thr_cab = self.config.get("matricula_template_threshold", 0.25)
+                
+                if score_cab >= thr_cab and pts_cab:
+                    xs = [p[0] for p in pts_cab]
+                    ys = [p[1] for p in pts_cab]
+                    x_min, x_max = min(xs), max(xs)
+                    y_min, y_max = min(ys), max(ys)
+                    
+                    # Salva a ROI detectada para debug
+                    debug_roi_path = os.path.join(debug_subdir, "debug_matricula_roi_template.png")
+                    imagem_original.crop((x_min, y_min, x_max, y_max)).save(debug_roi_path)
+                    
+                    # Extrai a matrícula da ROI detectada
+                    roi_matricula = imagem_original.crop((x_min, y_min, x_max, y_max))
+                    roi_processada = preprocess_roi_avancado(roi_matricula, debug_subdir, 2)
+                    
+                    # Salva a ROI processada para debug
+                    debug_roi_ocr_path = os.path.join(debug_subdir, "debug_matricula_roi_used_2.png")
+                    roi_processada.save(debug_roi_ocr_path)
+                    
+                    # Configuração específica para dígitos
+                    config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
+                    matricula = image_to_string(roi_processada, config=config_tess, output_type=Output.STRING).strip()
+                    matricula = ''.join(c for c in matricula if c.isdigit())
+                    
+                    logger.info(f"[Worker] Matrícula (template-cabeçalho) lida: '{matricula}'")
+                    if matricula.isdigit() and len(matricula) >= 5:
+                        resultados.append((matricula, score_cab))
+            except Exception as e:
+                logger.error(f"Erro no template de cabeçalho/matrícula: {e}")
+        
+        # Estratégia 3: Detecção por contornos
+        try:
+            logger.info("[Worker] Tentando detecção de matrícula por contornos...")
+            roi_coords = detectar_matricula_por_contornos(imagem_original, debug_folder=debug_subdir)
+            
+            if roi_coords:
+                x, y, w, h = roi_coords
+                roi_matricula = imagem_original.crop((x, y, x+w, y+h))
+                roi_processada = preprocess_roi_avancado(roi_matricula, debug_subdir, 3)
+                
+                # Salva a ROI processada para debug
+                roi_processada.save(os.path.join(debug_subdir, "matricula_contorno_processada.png"))
+                
+                # Extrai a matrícula
+                config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
+                matricula = image_to_string(roi_processada, config=config_tess, output_type=Output.STRING).strip()
+                matricula = ''.join(c for c in matricula if c.isdigit())
+                
+                logger.info(f"[Worker] Matrícula (contornos) lida: '{matricula}'")
+                if matricula.isdigit() and len(matricula) >= 5:
+                    resultados.append((matricula, 0.7))  # Confiança média para detecção por contornos
+        except Exception as e:
+            logger.error(f"Erro na detecção por contornos: {e}")
+        
+        # Estratégia 4: Detecção por transformada de Hough
+        try:
+            logger.info("[Worker] Tentando detecção de matrícula por Hough...")
+            roi_coords = detectar_matricula_por_hough(imagem_original, debug_folder=debug_subdir)
+            
+            if roi_coords:
+                x, y, w, h = roi_coords
+                roi_matricula = imagem_original.crop((x, y, x+w, y+h))
+                roi_processada = preprocess_roi_avancado(roi_matricula, debug_subdir, 4)
+                
+                # Salva a ROI processada para debug
+                roi_processada.save(os.path.join(debug_subdir, "matricula_hough_processada.png"))
+                
+                # Extrai a matrícula
+                config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
+                matricula = image_to_string(roi_processada, config=config_tess, output_type=Output.STRING).strip()
+                matricula = ''.join(c for c in matricula if c.isdigit())
+                
+                logger.info(f"[Worker] Matrícula (Hough) lida: '{matricula}'")
+                if matricula.isdigit() and len(matricula) >= 5:
+                    resultados.append((matricula, 0.6))  # Confiança menor para detecção por Hough
+        except Exception as e:
+            logger.error(f"Erro na detecção por Hough: {e}")
+        
+        # Escolhe o melhor resultado com base na confiança
+        if resultados:
+            # Ordena por confiança (maior primeiro)
+            resultados.sort(key=lambda x: x[1], reverse=True)
+            return resultados[0][0]
+        
+        return ""
 
     def run(self):
         try:
@@ -81,7 +290,18 @@ class ProcessWorker(QRunnable):
                 if "template_path" in self.config:
                     try:
                         template = Image.open(self.config["template_path"])
-                        pts_ref, score = detectar_area_gabarito_template(imagens[0], template)
+                        
+                        # Pré-processa a imagem para melhorar a detecção
+                        imagem_proc = pre_processar_imagem(imagens[0], equalizar=True, ajustar_contraste=True)
+                        
+                        # Detecta o template com multi-escala e rotações
+                        pts_ref, score = detectar_area_gabarito_template(
+                            imagem_proc, template, 
+                            pre_processar=True, 
+                            multi_escala=True,
+                            rotacoes=True
+                        )
+                        
                         logger.debug(f"[Worker] Template gabarito score: {score:.2f}")
                         if score < 0.5:
                             aviso = f"Baixa confiança no template gabarito (score={score:.2f})"
@@ -119,7 +339,7 @@ class ProcessWorker(QRunnable):
                         grid_rois=grid_rois,
                         num_alternativas=self.n_alternativas,
                         threshold_fill=threshold_fill,
-                        debug=False, 
+                        debug=True, 
                         debug_folder=debug_subdir
                     )
                     respostas_ordenadas = {}
@@ -130,78 +350,13 @@ class ProcessWorker(QRunnable):
                     info_ocr = extrair_info_ocr(pil_img_corrigida)
 
                     pil_img_original = imagens_originais[i]
-                    matricula_texto = ""
+                    
+                    # Usa a nova função para extrair matrícula com múltiplas estratégias
+                    matricula_texto = self.extrair_matricula_com_multiplas_estrategias(
+                        pil_img_original, debug_subdir
+                    )
+                    
                     dados_api = {}
-                    if "matricula_roi" in self.config:
-                        from pytesseract import image_to_string, Output
-                        try:
-                            x, y, w, h = self.config["matricula_roi"].values()
-                            roi_matricula = pil_img_original.crop((x, y, x+w, y+h))
-                            if self.config.get("scanned_by_printer", True):
-                                roi_matricula = preprocess_roi(roi_matricula)
-                            config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
-                            matricula_texto = image_to_string(roi_matricula, config=config_tess, output_type=Output.STRING).strip()
-                            logger.info(f"[Worker] Matrícula (ROI fixa) lida: '{matricula_texto}'")
-                            if not matricula_texto.isdigit():
-                                logger.warning(f"[Worker] Matrícula extraída inválida (ROI fixa): '{matricula_texto}'")
-                        except Exception as e:
-                            logger.error(f"Erro na extração da matrícula (ROI fixa): {e}")
-                            self.signals.message.emit(f"Aviso: falha ao extrair matrícula da ROI fixa: {e}")
-                    elif "matricula_template_path" in self.config:
-                        from pytesseract import image_to_string, Output
-                        from modules.core.detector import detectar_area_cabecalho_template
-                        try:
-                            temp_cab = Image.open(self.config["matricula_template_path"])
-                            pil_img_gray = pil_img_original.convert("L")
-                            img_gray_np = np.array(pil_img_gray)
-                            img_gray_eq = cv2.equalizeHist(img_gray_np)
-                            pil_img_eq = Image.fromarray(img_gray_eq)
-
-                            template_gray = np.array(temp_cab.convert("L"))
-                            logger.debug(f"[DEBUG] Tamanho da imagem equalizada: {img_gray_eq.shape}, tamanho do template: {template_gray.shape}")
-                            
-                            if template_gray.shape[0] > img_gray_eq.shape[0] or template_gray.shape[1] > img_gray_eq.shape[1]:
-                                scale = min(img_gray_eq.shape[0] / template_gray.shape[0], img_gray_eq.shape[1] / template_gray.shape[1])
-                                new_size = (int(template_gray.shape[1] * scale), int(template_gray.shape[0] * scale))
-                                logger.debug(f"[DEBUG] Redimensionando template para: {new_size}")
-                                temp_cab = temp_cab.resize(new_size)
-                                template_gray = np.array(temp_cab.convert("L"))
-                            
-                            pts_cab, score_cab = detectar_area_cabecalho_template(pil_img_eq, temp_cab)
-                            logger.debug(f"[DEBUG] Score do template matching do cabeçalho: {score_cab:.2f}")
-                            logger.debug(f"[DEBUG] Pontos do cabeçalho encontrados: {pts_cab}")
-                            
-                            xs = [p[0] for p in pts_cab]
-                            ys = [p[1] for p in pts_cab]
-                            x_min, x_max = min(xs), max(xs)
-                            y_min, y_max = min(ys), max(ys)
-                            
-                            debug_roi_path = os.path.join(debug_subdir, "debug_matricula_roi_template.png")
-                            pil_img_original.crop((x_min, y_min, x_max, y_max)).save(debug_roi_path)
-                            logger.debug(f"[DEBUG] ROI da matrícula (template) salva: {debug_roi_path}")
-                            
-                            thr_cab = self.config.get("matricula_template_threshold", 0.5)
-                            if score_cab >= thr_cab:
-                                roi_matricula = pil_img_original.crop((x_min, y_min, x_max, y_max))
-                                debug_roi_ocr_path = os.path.join(debug_subdir, "debug_matricula_roi_used.png")
-                                roi_matricula.save(debug_roi_ocr_path)
-                                logger.debug(f"[DEBUG] ROI for OCR saved: {debug_roi_ocr_path}")
-                                
-                                if self.config.get("scanned_by_printer", False):
-                                    roi_matricula = preprocess_roi(roi_matricula)
-                                config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
-                                matricula_texto = image_to_string(roi_matricula, config=config_tess, output_type=Output.STRING).strip()
-                                logger.info(f"[Worker] Matrícula (template-cabeçalho) lida: '{matricula_texto}'")
-                                if not matricula_texto.isdigit():
-                                    logger.warning(f"[Worker] Matrícula extraída inválida (template-cabeçalho): '{matricula_texto}'")
-                            else:
-                                aviso = f"Cabeçalho (matrícula) não encontrado (score={score_cab:.2f})"
-                                self.signals.message.emit(aviso)
-                                logger.warning(aviso)
-                        except Exception as e:
-                            logger.error(f"Erro no template de cabeçalho/matrícula: {e}")
-                            self.signals.message.emit(f"Aviso: falha ao usar template_cabecalho: {e}")
-
                     if matricula_texto.isdigit():
                         logger.info(f"[Worker] Buscando estudante para matrícula {matricula_texto}")
                         try:

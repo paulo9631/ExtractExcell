@@ -8,6 +8,9 @@
     "altura_corrigida": 864,
     "matricula_template_path": "matricula_template.png",
     "matricula_template_threshold": 0.25,
+    "scanned_by_printer": true,
+    "pre_processar_imagens": true,
+    "usar_multi_escala": true,
 
     "grid_rois": [
         [
