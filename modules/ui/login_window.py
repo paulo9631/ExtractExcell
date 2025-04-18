@@ -176,7 +176,7 @@ class LoginWindow(QDialog):
         senha = self.input_senha.text().strip()
 
         # Credenciais hard-coded para validação simples
-        if email == "avaliacoesdiagnosticas@educa.milha.ce.gov.br" and senha == "admin123":
+        if email == "email" and senha == "admin123":
             QMessageBox.information(self, "Sucesso", "Login bem-sucedido!")
             self.accept()  # Fecha a janela de login e permite continuar
         else:
