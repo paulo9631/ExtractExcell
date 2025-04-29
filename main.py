@@ -1,6 +1,16 @@
 import sys
 import json
 import os
+import logging
+
+# Configura os níveis de logging para bibliotecas externas
+logging.getLogger("PIL").setLevel(logging.WARNING)
+logging.getLogger("pdf2image").setLevel(logging.WARNING)
+logging.getLogger("pytesseract").setLevel(logging.WARNING)
+logging.getLogger("fitz").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger().setLevel(logging.INFO)  # Nível geral do seu app
+
 from PyQt6.QtWidgets import QApplication, QDialog
 from modules.ui.login_window import LoginWindow
 from modules.ui.gui import GabaritoApp
