@@ -2,14 +2,11 @@ import requests
 
 BASE_URL = "https://new-api.ideedutec.com"
 
-# student_api.py
-
 import requests
 import logging
 
 BASE_URL = "https://new-api.ideedutec.com"
 
-# Crie (ou utilize) um logger para este módulo
 logger = logging.getLogger(__name__)
 
 def login_api(email, senha, base_url=BASE_URL):
@@ -22,15 +19,12 @@ def login_api(email, senha, base_url=BASE_URL):
         "password": senha
     }
     try:
-        # Log informando que vamos enviar a requisição e qual o payload
         logger.info(f"[LOGIN_API] Enviando POST para {url} com payload={payload}")
         
         response = requests.post(url, json=payload)
         
-        # Log dos dados da resposta
         logger.info(f"[LOGIN_API] Resposta HTTP {response.status_code} - {response.text}")
         
-        # Levanta exceção se a resposta indicar erro (>=400)
         response.raise_for_status()
         
         data = response.json()

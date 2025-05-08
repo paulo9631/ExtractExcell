@@ -10,3 +10,4 @@ pymupdf
 requests
 opencv
 openpyxl
+PyPDF2
