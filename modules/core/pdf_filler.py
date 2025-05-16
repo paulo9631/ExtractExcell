@@ -19,20 +19,19 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
         doc = fitz.open(modelo_pdf_path)
         page = doc[0]
 
-        # Coordenadas (x, y) ajustadas para os campos
-        # Estas coordenadas são baseadas na imagem fornecida do cartão-resposta
+
         coordenadas = {
-            "escola": (244, 448),        # Campo Escola
-            "nome": (51, 487),         # Campo Nome Completo
-            "turno": (311, 486),        # Campo Turno
-            "turma": (367, 486),        # Campo Turma
-            "data_nascimento": (855, 163), # Campo Data de Nascimento
-            "matricula": (57, 530),    # Campo Matrícula
+            "escola": (244, 448),       
+            "nome": (51, 487),         
+            "turno": (311, 486),       
+            "turma": (367, 486),       
+            "data_nascimento": (855, 163), 
+            "matricula": (57, 530),    
         }
 
         # Configurações de fonte
         fonte = "helv"
-        tamanho = 10
+        tamanho = 11
         
         # Insere os textos diretamente
         page.insert_text(coordenadas["escola"], aluno.get("escola", ""), fontname=fonte, fontsize=tamanho, color=(0,0,0))

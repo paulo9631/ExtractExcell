@@ -9,14 +9,16 @@ from PyQt6.QtCore import Qt
 from modules.core.pdf_filler import preencher_pdf_com_info
 from PyPDF2 import PdfMerger
 import tempfile
-import os
 
 class PDFFillerWindow(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, client=None):
         super().__init__(parent)
         self.setWindowTitle("Preencher Gabarito PDF")
         self.setMinimumWidth(500)
         self.setMinimumHeight(500)
+
+        self.client = client
+        self.lista_alunos_inep = []
 
         self.modelo_path = "modelo_gabarito_base.pdf"
         if not os.path.exists(self.modelo_path):
@@ -30,6 +32,28 @@ class PDFFillerWindow(QDialog):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
+
+        inep_layout = QHBoxLayout()
+        inep_label = QLabel("INEP da Escola:")
+        inep_label.setStyleSheet("font-weight: bold;")
+        self.inep_input = QLineEdit()
+        self.inep_input.setPlaceholderText("Digite o código INEP e pressione Enter")
+        self.inep_input.returnPressed.connect(self.buscar_por_inep)
+        self.inep_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                padding: 8px;
+                background-color: #f9f9f9;
+            }
+            QLineEdit:focus {
+                border-color: #2563eb;
+                background-color: white;
+            }
+        """)
+        inep_layout.addWidget(inep_label)
+        inep_layout.addWidget(self.inep_input)
+        main_layout.addLayout(inep_layout)
 
         section_title = QLabel("Informações do Aluno")
         section_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 10px;")
@@ -204,14 +228,41 @@ class PDFFillerWindow(QDialog):
             if k in self.campos:
                 self.campos[k].setText(v)
 
+    def buscar_por_inep(self):
+        if not self.client:
+            QMessageBox.warning(self, "Erro", "API não conectada.")
+            return
+
+        inep = self.inep_input.text().strip()
+        if not inep:
+            QMessageBox.warning(self, "Erro", "Digite o código INEP.")
+            return
+
+        try:
+            dados = self.client.buscar_por_inep(inep)
+            if not dados:
+                QMessageBox.information(self, "Nenhum aluno encontrado", "Nenhum estudante foi localizado com esse INEP.")
+                return
+
+            self.lista_alunos_inep = [{
+                "nome": aluno.get("name", ""),
+                "matricula": aluno.get("enrollment", ""),
+                "escola": aluno.get("schoolName", ""),
+                "turma": aluno.get("className", ""),
+                "turno": aluno.get("shift", ""),
+                "data_nascimento": aluno.get("birthDate", "")[:10],
+            } for aluno in dados]
+
+            QMessageBox.information(self, "Sucesso", f"{len(self.lista_alunos_inep)} alunos encontrados.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha na consulta:\n{e}")
+
     def carregar_alunos_de_planilha(self, caminho_arquivo):
         try:
-            import pandas as pd
             df = pd.read_excel(caminho_arquivo) if caminho_arquivo.endswith(".xlsx") else pd.read_csv(caminho_arquivo)
-            df = df.fillna("")  # substitui NaN por string vazia
-            df = df.astype(str)  # converte tudo para string
-            alunos = df.to_dict(orient="records")
-            return alunos
+            df = df.fillna("")
+            df = df.astype(str)
+            return df.to_dict(orient="records")
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao ler a planilha:\n{e}")
             return []

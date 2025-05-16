@@ -9,7 +9,7 @@ logging.getLogger("pdf2image").setLevel(logging.WARNING)
 logging.getLogger("pytesseract").setLevel(logging.WARNING)
 logging.getLogger("fitz").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger().setLevel(logging.INFO)  # Nível geral do seu app
+logging.getLogger().setLevel(logging.INFO)
 
 from PyQt6.QtWidgets import QApplication, QDialog
 from modules.ui.login_window import LoginWindow
@@ -32,12 +32,13 @@ def carregar_configuracoes(path='config.json'):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
+
     login_window = LoginWindow()
     if login_window.exec() == QDialog.DialogCode.Accepted:
         config = carregar_configuracoes()
-        gui = GabaritoApp(config)
-        gui.showFullScreen()  # Abre a tela principal em tela cheia
+        client = login_window.client  # Cliente autenticado com token
+        gui = GabaritoApp(config, client=client)  # GUI recebe o client
+        gui.showFullScreen()
         sys.exit(app.exec())
     else:
         sys.exit(0)
