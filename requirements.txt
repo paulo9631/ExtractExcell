@@ -5,3 +5,11 @@ opencv-python
 pandas
 pytesseract
 pymupdf
+reportlab
+pymupdf
+requests
+opencv
+openpyxl
+PyPDF2
+cryptography
+PyJWT

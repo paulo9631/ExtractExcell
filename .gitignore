@@ -1,1 +1,8 @@
 debug/
+modules/ui/_pycache_
+modules/core/_pycache_
+_init_.py
+__pycache__/
+modules/_pycache_
+tokens.enc/
+test_inep.py/

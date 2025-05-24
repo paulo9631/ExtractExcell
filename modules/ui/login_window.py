@@ -7,15 +7,18 @@ from PyQt6.QtGui import QFont, QPixmap, QIcon, QColor
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect
 
+from modules.core.student_api import StudentAPIClient
+
 class LoginWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("iDEEDUTEC - Login")
         self.setFixedSize(1200, 800)
         self.setWindowIcon(QIcon("assets/ideedutec_icon.png"))
-        
+        self.client = StudentAPIClient()
+        self.token = None
+
         self.showFullScreen()
-        
         self.initUI()
 
     def initUI(self):
@@ -23,7 +26,6 @@ class LoginWindow(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-       
         card_widget = QFrame()
         card_widget.setObjectName("card")
         card_widget.setStyleSheet("""
@@ -52,7 +54,7 @@ class LoginWindow(QDialog):
         header_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         logo_label = QLabel()
-        logo_pixmap = QPixmap("assets/logo_horizontal.png") 
+        logo_pixmap = QPixmap("assets/logo_horizontal.png")
         logo_pixmap = logo_pixmap.scaled(
             200, 100,
             Qt.AspectRatioMode.KeepAspectRatio,
@@ -88,7 +90,7 @@ class LoginWindow(QDialog):
             }
         """)
         self.input_email.setMinimumHeight(45)
-        
+
         form_layout.addWidget(email_label)
         form_layout.addWidget(self.input_email)
 
@@ -112,7 +114,7 @@ class LoginWindow(QDialog):
             }
         """)
         self.input_senha.setMinimumHeight(45)
-        
+
         form_layout.addWidget(senha_label)
         form_layout.addWidget(self.input_senha)
 
@@ -146,7 +148,6 @@ class LoginWindow(QDialog):
 
         self.setStyleSheet("""
             QDialog {
-                /* Exemplo: background com imagem centralizada e coberta (cover) */
                 background: qlineargradient(
                     x1:0, y1:0, x2:0, y2:1,
                     stop:0 rgba(255,255,255,0.4), stop:1 rgba(255,255,255,0.4)
@@ -169,21 +170,20 @@ class LoginWindow(QDialog):
         return shadow
 
     def fazer_login(self):
-        """
-        Lógica simples: se e-mail e senha não estiverem vazios, login é OK.
-        """
         email = self.input_email.text().strip()
         senha = self.input_senha.text().strip()
 
-        if email and senha:
+        if not email or not senha:
+            QMessageBox.warning(self, "Erro", "Preencha o e-mail e a senha.")
+            return
+
+        try:
+            self.client.login(email, senha)
+            self.token = self.client.token
             QMessageBox.information(self, "Sucesso", "Login bem-sucedido!")
             self.accept()
-        else:
-            QMessageBox.warning(
-                self,
-                "Erro",
-                "E-mail ou senha inválidos.\nPor favor, preencha ambos os campos."
-            )
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha ao realizar login:\n{e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

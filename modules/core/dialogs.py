@@ -92,8 +92,8 @@ class ResultadoDialog(QDialog):
                     contagem["Anulada"]+=1
 
         row = 1
-        for k,v in contagem.items():
-            if v>0:
+        for k, v in contagem.items():
+            if v > 0:
                 stats_layout.addWidget(QLabel(f"Respostas {k}:"), row, 0)
                 value_label = QLabel(str(v))
                 value_label.setStyleSheet("font-weight: bold; color: #4a90e2; font-size: 16px;")
@@ -187,7 +187,7 @@ class ResultadoDialog(QDialog):
                 q_label.setStyleSheet("color: #333;")
                 respostas_layout.addWidget(q_label, row, 0)
                 r_label = QLabel(resp)
-                if resp in ['A', 'B', 'C', 'D', 'E']:
+                if resp in ['A', 'B', 'C', 'D', 'E', 'N']:
                     r_label.setStyleSheet("font-weight: bold; color: #4a90e2;")
                 elif "Não marcado" in resp:
                     r_label.setStyleSheet("font-weight: bold; color: #f5a623;")
