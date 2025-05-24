@@ -11,3 +11,5 @@ requests
 opencv
 openpyxl
 PyPDF2
+cryptography
+PyJWT

@@ -19,48 +19,47 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
         doc = fitz.open(modelo_pdf_path)
         page = doc[0]
 
-
         coordenadas = {
-            "escola": (244, 448),       
-            "nome": (51, 487),         
-            "turno": (311, 486),       
-            "turma": (367, 486),       
-            "data_nascimento": (855, 163), 
-            "matricula": (57, 530),    
+            "escola": (241, 448),
+            "nome": (51, 491),
+            "turno": (309, 491),
+            "turma": (365, 491),
+            "matricula": (53, 535),
+            "nasc_d1": (424, 491),
+            "nasc_d2": (444, 491),
+            "nasc_m1": (474, 491),
+            "nasc_m2": (494, 491),
+            "nasc_a3": (521, 491),
+            "nasc_a4": (542, 491),
         }
 
-        # Configurações de fonte
         fonte = "helv"
         tamanho = 11
-        
-        # Insere os textos diretamente
-        page.insert_text(coordenadas["escola"], aluno.get("escola", ""), fontname=fonte, fontsize=tamanho, color=(0,0,0))
-        page.insert_text(coordenadas["nome"], aluno.get("nome", ""), fontname=fonte, fontsize=tamanho, color=(0,0,0))
-        page.insert_text(coordenadas["turno"], aluno.get("turno", ""), fontname=fonte, fontsize=tamanho, color=(0,0,0))
-        page.insert_text(coordenadas["turma"], aluno.get("turma", ""), fontname=fonte, fontsize=tamanho, color=(0,0,0))
-        
-        # Para a data de nascimento, podemos formatá-la melhor
+
+        page.insert_text(coordenadas["escola"], aluno.get("escola", ""), fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+        page.insert_text(coordenadas["nome"], aluno.get("nome", ""), fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+        page.insert_text(coordenadas["turno"], aluno.get("turno", ""), fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+        page.insert_text(coordenadas["turma"], aluno.get("turma", ""), fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+        page.insert_text(coordenadas["matricula"], aluno.get("matricula", ""), fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+
         data_nasc = aluno.get("data_nascimento", "")
-        if data_nasc and len(data_nasc) >= 10:  # Formato esperado: DD/MM/AAAA
-            # Divide a data em dia, mês e ano para posicionar em caixas separadas
+        if data_nasc and len(data_nasc) >= 10:
             partes = data_nasc.split('/')
             if len(partes) == 3:
                 dia, mes, ano = partes
-                # Posiciona cada parte da data
-                page.insert_text((855, 163), dia, fontname=fonte, fontsize=tamanho, color=(0,0,0))
-                page.insert_text((900, 163), mes, fontname=fonte, fontsize=tamanho, color=(0,0,0))
-                page.insert_text((945, 163), ano, fontname=fonte, fontsize=tamanho, color=(0,0,0))
-        else:
-            # Se não estiver no formato esperado, insere como está
-            page.insert_text(coordenadas["data_nascimento"], data_nasc, fontname=fonte, fontsize=tamanho, color=(0,0,0))
-        
-        # Insere a matrícula
-        page.insert_text(coordenadas["matricula"], aluno.get("matricula", ""), fontname=fonte, fontsize=tamanho, color=(0,0,0))
+                if len(dia) == 2:
+                    page.insert_text(coordenadas["nasc_d1"], dia[0], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+                    page.insert_text(coordenadas["nasc_d2"], dia[1], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+                if len(mes) == 2:
+                    page.insert_text(coordenadas["nasc_m1"], mes[0], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+                    page.insert_text(coordenadas["nasc_m2"], mes[1], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+                if len(ano) == 4:
+                    page.insert_text(coordenadas["nasc_a3"], ano[2], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+                    page.insert_text(coordenadas["nasc_a4"], ano[3], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
 
         pdf_final.insert_pdf(doc)
         doc.close()
 
-    # Garante que o diretório de saída existe
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
     pdf_final.save(output_path)
     pdf_final.close()

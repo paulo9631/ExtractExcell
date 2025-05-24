@@ -24,14 +24,16 @@ from modules.ui.icon_provider import IconProvider
 from modules.ui.pdf_filler_window import PDFFillerWindow
 
 
+
 class PDFLoaderSignals(QObject):
     finished = pyqtSignal(str, int)
     error = pyqtSignal(str)
 
 
 class PDFLoaderWorker(QRunnable):
-    def __init__(self, pdf_path):
+    def __init__(self, config, pdf_path, client=None):
         super().__init__()
+        self.client = client
         self.pdf_path = pdf_path
         self.signals = PDFLoaderSignals()
 
@@ -47,6 +49,7 @@ class PDFLoaderWorker(QRunnable):
 class SelectedPDFsDialog(QDialog):
     def __init__(self, pdf_paths, parent=None):
         super().__init__(parent)
+        self.pdf_paths = pdf_paths
         self.setWindowTitle("PDFs Selecionados")
         self.resize(800, 600)
         self.setStyleSheet("""
@@ -120,8 +123,9 @@ class SelectedPDFsDialog(QDialog):
 
 
 class GabaritoApp(QMainWindow):
-    def __init__(self, config):
+    def __init__(self, config, client=None):
         super().__init__()
+        self.client = client  # Isso aqui é OBRIGATÓRIO
         self.config = config
         self.pdf_paths = []
         self.threadpool = QThreadPool()
@@ -199,7 +203,6 @@ class GabaritoApp(QMainWindow):
         lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl.addWidget(lbl_logo)
         
-        # Title changed to "Sistema de Avaliação Diagnóstico"
         lbl_title = QLabel("Sistema de Avaliação Diagnóstico")
         lbl_title.setStyleSheet("color:white; font-size:20px; font-weight:bold;")
         hl.addWidget(lbl_title)
@@ -560,7 +563,6 @@ class GabaritoApp(QMainWindow):
         self.setCentralWidget(main)
 
     def abrir_pdf_filler(self):
-        from modules.ui.pdf_filler_window import PDFFillerWindow
         dlg = PDFFillerWindow(self)  # Nova versão sem precisar de resultados
         dlg.exec()
 

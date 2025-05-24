@@ -562,7 +562,4 @@ def extrair_info_ocr(imagem_pil):
         "turma": ""
     }
     
-    # Aqui você pode adicionar lógica para extrair outras informações
-    # como nome do aluno, escola, etc.
-    
     return info

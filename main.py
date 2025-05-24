@@ -14,6 +14,7 @@ logging.getLogger().setLevel(logging.INFO)
 from PyQt6.QtWidgets import QApplication, QDialog
 from modules.ui.login_window import LoginWindow
 from modules.ui.gui import GabaritoApp
+from modules.core.student_api import StudentAPIClient
 
 def carregar_configuracoes(path='config.json'):
     """Carrega as configurações do arquivo JSON."""
