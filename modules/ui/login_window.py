@@ -7,15 +7,18 @@ from PyQt6.QtGui import QFont, QPixmap, QIcon, QColor
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect
 
+from modules.core.student_api import StudentAPIClient
+
 class LoginWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("iDEEDUTEC - Login")
         self.setFixedSize(1200, 800)
         self.setWindowIcon(QIcon("assets/ideedutec_icon.png"))
-        
+        self.client = StudentAPIClient()
+        self.token = None
+
         self.showFullScreen()
-        
         self.initUI()
 
     def initUI(self):
@@ -51,7 +54,7 @@ class LoginWindow(QDialog):
         header_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         logo_label = QLabel()
-        logo_pixmap = QPixmap("assets/logo_horizontal.png") 
+        logo_pixmap = QPixmap("assets/logo_horizontal.png")
         logo_pixmap = logo_pixmap.scaled(
             200, 100,
             Qt.AspectRatioMode.KeepAspectRatio,
@@ -87,7 +90,7 @@ class LoginWindow(QDialog):
             }
         """)
         self.input_email.setMinimumHeight(45)
-        
+
         form_layout.addWidget(email_label)
         form_layout.addWidget(self.input_email)
 
@@ -111,7 +114,7 @@ class LoginWindow(QDialog):
             }
         """)
         self.input_senha.setMinimumHeight(45)
-        
+
         form_layout.addWidget(senha_label)
         form_layout.addWidget(self.input_senha)
 
@@ -167,24 +170,20 @@ class LoginWindow(QDialog):
         return shadow
 
     def fazer_login(self):
-        """
-        Verifica as credenciais: se o e-mail for "admin@ideedutec.com.br"
-        e a senha "admin123", o login é bem-sucedido. Caso contrário, 
-        exibe uma mensagem de erro.
-        """
         email = self.input_email.text().strip()
         senha = self.input_senha.text().strip()
 
-        # Credenciais hard-coded para validação simples
-        if email == "email" and senha == "admin123":
+        if not email or not senha:
+            QMessageBox.warning(self, "Erro", "Preencha o e-mail e a senha.")
+            return
+
+        try:
+            self.client.login(email, senha)
+            self.token = self.client.token
             QMessageBox.information(self, "Sucesso", "Login bem-sucedido!")
-            self.accept()  # Fecha a janela de login e permite continuar
-        else:
-            QMessageBox.warning(
-                self,
-                "Erro",
-                "E-mail ou senha inválidos.\nPor favor, verifique suas credenciais."
-            )
+            self.accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha ao realizar login:\n{e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

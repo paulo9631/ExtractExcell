@@ -12,12 +12,10 @@ from modules.core.detector import (
     corrigir_perspectiva,
     detectar_area_gabarito_template,
     detectar_area_cabecalho_template,
-    detectar_matricula_por_contornos,
-    detectar_matricula_por_hough,
     pre_processar_imagem
 )
 from modules.core.text_extractor import extrair_info_ocr, extrair_matricula, extrair_matricula_avancado
-from modules.core.student_api import buscar_estudante
+from modules.core.student_api import StudentAPIClient
 from modules.core.detector_matricula import DetectorMatricula
 from modules.utils import logger
 
@@ -103,14 +101,14 @@ def preprocess_roi_avancado(roi_pil, debug_folder=None, idx=0):
     return Image.fromarray(roi_morph)
 
 class ProcessWorker(QRunnable):
-    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido):
+    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido, client: StudentAPIClient):
         super().__init__()
         self.pdf_paths = pdf_paths
         self.config = config
         self.n_alternativas = n_alternativas
         self.dpi_escolhido = dpi_escolhido
+        self.client = client
         self.signals = WorkerSignals()
-        # Inicializa o detector de matrículas
         self.detector_matricula = DetectorMatricula(config)
 
     def extrair_matricula_com_multiplas_estrategias(self, imagem_original, debug_subdir):
@@ -334,7 +332,9 @@ class ProcessWorker(QRunnable):
                     if matricula_texto.isdigit():
                         logger.info(f"[Worker] Buscando estudante para matrícula {matricula_texto}")
                         try:
-                            dados_api = buscar_estudante(matricula_texto)
+                            resultado = self.client.buscar_por_matriculas([matricula_texto])
+                            dados_api = resultado[0] if resultado else {}
+
                             logger.info(f"[Worker] API returned for {matricula_texto}: {dados_api}")
                             if dados_api:
                                 info_ocr["nome_aluno"] = dados_api.get("name", info_ocr.get("nome_aluno", ""))
