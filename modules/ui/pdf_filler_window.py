@@ -3,7 +3,7 @@ import pandas as pd
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFileDialog, QMessageBox, QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QWidget, QApplication,
-    QProgressBar, QComboBox, QStackedWidget, QFormLayout, QToolButton, QSizePolicy, QScrollArea
+    QProgressBar, QComboBox, QStackedWidget, QFormLayout, QToolButton, QSizePolicy, QScrollArea, QInputDialog
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor
@@ -1142,109 +1142,55 @@ class PDFFillerWindow(QDialog):
             QMessageBox.critical(self, "Erro", f"Erro ao gerar PDF:\n{e}")
 
     def gerar_atraves_excel(self):
+        from modules.DB.operations import (
+            criar_tabelas_excel,
+            salvar_alunos_em_lote_excel,
+            buscar_por_turma_excel,
+        )
+
+        criar_tabelas_excel()
+
         planilha_path, _ = QFileDialog.getOpenFileName(self, "Selecione a planilha de alunos", "", "Planilhas (*.xlsx *.csv)")
         if not planilha_path:
             return
 
         alunos = self.carregar_alunos_de_planilha(planilha_path)
         if not alunos:
+            QMessageBox.warning(self, "Erro", "Nenhum aluno encontrado na planilha.")
+            return
+
+        for aluno in alunos:
+            aluno["fonte"] = "Excel"
+
+        # Salvar os alunos no banco
+        salvar_alunos_em_lote_excel(alunos)
+
+        # Perguntar turma para filtrar geração
+        turmas = sorted(set(a["turma"] for a in alunos if a.get("turma")))
+        turma, ok = QInputDialog.getItem(self, "Selecione a Turma", "Turma:", turmas, editable=False)
+
+        if not ok or not turma:
+            return
+
+        alunos_filtrados = buscar_por_turma_excel(turma)
+        if not alunos_filtrados:
+            QMessageBox.warning(self, "Erro", f"Nenhum aluno encontrado para a turma '{turma}'.")
             return
 
         pasta_saida = QFileDialog.getExistingDirectory(self, "Selecione a pasta de saída")
         if not pasta_saida:
             return
 
-        # Criar diálogo de progresso
-        progress_dialog = QDialog(self)
-        progress_dialog.setWindowTitle("Gerando PDFs")
-        progress_dialog.setFixedSize(400, 150)
-        progress_dialog.setStyleSheet("""
-            QDialog {
-                background-color: white;
-            }
-        """)
-        
-        progress_layout = QVBoxLayout(progress_dialog)
-        progress_layout.setContentsMargins(20, 20, 20, 20)
-        
-        progress_label = QLabel("Gerando PDFs a partir do Excel...")
-        progress_label.setStyleSheet("font-size: 14px; color: #334155;")
-        progress_layout.addWidget(progress_label)
-        
-        progress_bar = QProgressBar()
-        progress_bar.setRange(0, len(alunos))
-        progress_bar.setValue(0)
-        progress_bar.setTextVisible(True)
-        progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                background-color: #f8fafc;
-                text-align: center;
-                height: 24px;
-                margin-top: 10px;
-            }
-            QProgressBar::chunk {
-                background-color: #10b981;
-                border-radius: 7px;
-            }
-        """)
-        progress_layout.addWidget(progress_bar)
-        
-        progress_detail = QLabel("Preparando...")
-        progress_detail.setStyleSheet("font-size: 12px; color: #64748b; margin-top: 5px;")
-        progress_layout.addWidget(progress_detail)
-        
-        progress_dialog.show()
-        QApplication.processEvents()
-
-        merger = PdfMerger()
-        arquivos_temp = []
-        erros = 0
-
-        for i, aluno in enumerate(alunos):
-            try:
-                progress_detail.setText(f"Processando: {aluno.get('nome', 'Aluno')}")
-                progress_bar.setValue(i)
-                QApplication.processEvents()
-                
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-                temp_file.close()
-                preencher_pdf_com_info(self.modelo_path, [aluno], temp_file.name)
-                merger.append(temp_file.name)
-                arquivos_temp.append(temp_file.name)
-            except Exception as e:
-                erros += 1
-                print(f"Erro com {aluno.get('nome', 'Aluno')} -> {e}")
-
-        progress_detail.setText("Finalizando PDF...")
-        QApplication.processEvents()
-
-        if arquivos_temp:
-            escola = alunos[0].get("escola", "Escola").replace(" ", "_")
-            turma = alunos[0].get("turma", "Turma").replace(" ", "_")
-            nome_arquivo = f"{escola}_{turma}_gabaritos.pdf"
+        # Gerar PDF
+        try:
+            nome_arquivo = f"{turma.replace(' ', '_')}_gabaritos.pdf"
             caminho_saida = os.path.join(pasta_saida, nome_arquivo)
-            merger.write(caminho_saida)
-            merger.close()
+            preencher_pdf_com_info(self.modelo_path, [a.dict() for a in alunos_filtrados], caminho_saida)
 
-            for arq in arquivos_temp:
-                try:
-                    os.remove(arq)
-                except Exception as e:
-                    print(f"Erro ao remover {arq}: {e}")
+            QMessageBox.information(self, "Sucesso", f"PDF gerado com sucesso em:\n{caminho_saida}")
 
-            progress_dialog.close()
-            
-            QMessageBox.information(
-                self,
-                "Sucesso",
-                f"PDF unificado salvo em:\n{caminho_saida}\n\nAlunos processados: {len(alunos) - erros}\nFalhas: {erros}"
-            )
-            self.accept()
-        else:
-            progress_dialog.close()
-            QMessageBox.warning(self, "Erro", "Não foi possível gerar nenhum PDF.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao gerar PDF:\n{e}")
 
     def carregar_alunos_de_planilha(self, caminho_arquivo):
         try:

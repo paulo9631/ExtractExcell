@@ -13,3 +13,4 @@ openpyxl
 PyPDF2
 cryptography
 PyJWT
+sqlmodel
