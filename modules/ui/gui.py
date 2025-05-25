@@ -640,7 +640,7 @@ class GabaritoApp(QMainWindow):
             if col >= 3:
                 col = 0
                 row += 1
-            loader = PDFLoaderWorker(path)
+            loader = PDFLoaderWorker(self.config, path, client=self.client)
             loader.signals.finished.connect(self.on_loader_finished)
             loader.signals.error.connect(self.on_loader_error)
             self.threadpool.start(loader)
@@ -673,7 +673,8 @@ class GabaritoApp(QMainWindow):
             pdf_paths=self.pdf_paths,
             config=self.config,
             n_alternativas=self.combo_alt.currentData(),
-            dpi_escolhido=dpi
+            dpi_escolhido=dpi,
+            client=self.client
         )
         worker.signals.progress.connect(self.progress.setValue)
         worker.signals.message.connect(self.atualizar_status)
