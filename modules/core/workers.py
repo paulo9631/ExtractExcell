@@ -18,6 +18,8 @@ from modules.core.text_extractor import extrair_info_ocr, extrair_matricula, ext
 from modules.core.student_api import StudentAPIClient
 from modules.core.detector_matricula import DetectorMatricula
 from modules.utils import logger
+from modules.DB.operations import buscar_por_matricula_excel
+
 
 class WorkerSignals(QObject):
     progress = pyqtSignal(int)
@@ -334,17 +336,30 @@ class ProcessWorker(QRunnable):
                         try:
                             resultado = self.client.buscar_por_matriculas([matricula_texto])
                             dados_api = resultado[0] if resultado else {}
-
-                            logger.info(f"[Worker] API returned for {matricula_texto}: {dados_api}")
-                            if dados_api:
-                                info_ocr["nome_aluno"] = dados_api.get("name", info_ocr.get("nome_aluno", ""))
-                                info_ocr["escola"] = dados_api.get("school", info_ocr.get("escola", ""))
-                                info_ocr["turma"] = dados_api.get("class", info_ocr.get("turma", ""))
-                            else:
-                                logger.debug(f"[Worker] API não retornou dados para matrícula {matricula_texto}")
                         except Exception as e:
-                            logger.error(f"Erro na busca do estudante: {e}")
-                            self.signals.message.emit(f"Aviso: falha ao buscar estudante: {e}")
+                            logger.warning(f"[Worker] Erro ao buscar na API: {e}")
+                            dados_api = {}
+
+                        if not dados_api:
+                            # Se não encontrou na API, tenta no DB local
+                            logger.info(f"[Worker] API não encontrou matrícula {matricula_texto}. Buscando localmente...")
+                            aluno_local = buscar_por_matricula_excel(matricula_texto)
+                            if aluno_local:
+                                dados_api = {
+                                    "name": aluno_local.nome,
+                                    "school": aluno_local.escola,
+                                    "class": aluno_local.turma,
+                                    "turn": aluno_local.turno,
+                                    "birthDate": aluno_local.data_nascimento
+                                }
+
+                        if dados_api:
+                            logger.info(f"[Worker] Dados encontrados: {dados_api}")
+                            info_ocr["nome_aluno"] = dados_api.get("name", info_ocr.get("nome_aluno", ""))
+                            info_ocr["escola"] = dados_api.get("school", info_ocr.get("escola", ""))
+                            info_ocr["turma"] = dados_api.get("class", info_ocr.get("turma", ""))
+                            info_ocr["turno"] = dados_api.get("turn", "")
+                            info_ocr["data_nascimento"] = dados_api.get("birthDate", "")
 
                     page_dict = {
                         "Página": f"PDF {idx+1} Pag {i+1}",
