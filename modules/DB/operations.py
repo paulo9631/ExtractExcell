@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlmodel import SQLModel, Session, create_engine, select
 from modules.DB.models import Aluno
 
@@ -27,3 +28,7 @@ def buscar_por_turma_excel(turma: str):
     with Session(engine) as session:
         result = session.exec(select(Aluno).where(Aluno.turma == turma)).all()
         return result
+
+def buscar_por_matricula(matricula: str) -> Optional[Aluno]:
+    with Session(engine) as session:
+        return session.exec(select(Aluno).where(Aluno.matricula == matricula)).first()
