@@ -366,17 +366,25 @@ def detectar_respostas_por_grid(
     debug_folder=None
 ):
     """
-    Detecta as respostas em formato de grade (bubbles).
-    Usa threshold Otsu e operações morfológicas (close, open).
-
-    Se num_alternativas=5, as alternativas serão A, B, C, D, E.
+    Detecta as respostas em formato de grade (bubbles) com algoritmo melhorado.
+    
+    Args:
+        imagem: Imagem PIL
+        grid_rois: Lista de ROIs do grid
+        num_alternativas: Número de alternativas (4 ou 5)
+        threshold_fill: Threshold para considerar uma alternativa marcada
+        debug: Se True, salva imagens de debug
+        debug_folder: Pasta para salvar imagens de debug
+        
+    Returns:
+        Dicionário com as respostas detectadas
     """
     if num_alternativas == 4:
         alternativas = ['A','B','C','D']
     else:
         alternativas = ['A','B','C','D','E']
     
-    # Debug dirs
+    # Configuração de debug
     if debug and debug_folder:
         os.makedirs(debug_folder, exist_ok=True)
         debug_bin_dir = os.path.join(debug_folder, "bin")
@@ -386,42 +394,57 @@ def detectar_respostas_por_grid(
         os.makedirs(debug_rois_dir, exist_ok=True)
         os.makedirs(debug_subrois_dir, exist_ok=True)
         
-        # Salva a imagem colorida de entrada
-        step1_color = os.path.join(debug_bin_dir, "debug_step1_color.png")
-        imagem.save(step1_color)
+        # Salva a imagem original
+        imagem.save(os.path.join(debug_bin_dir, "debug_original.png"))
 
     # Converte para escala de cinza
     imagem_gray = imagem.convert("L")
-    if debug and debug_folder:
-        step2_gray = os.path.join(debug_bin_dir, "debug_step2_gray.png")
-        imagem_gray.save(step2_gray)
-
-    # Threshold Otsu invertido
     imagem_np = np.array(imagem_gray)
     
-    # Aplica CLAHE para melhorar o contraste antes do threshold
+    if debug and debug_folder:
+        cv2.imwrite(os.path.join(debug_bin_dir, "debug_gray.png"), imagem_np)
+
+    # Pré-processamento melhorado
+    # 1. Remoção de ruído
+    imagem_np = cv2.bilateralFilter(imagem_np, 5, 50, 50)
+    
+    # 2. Melhoria de contraste com CLAHE
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     imagem_np = clahe.apply(imagem_np)
     
     if debug and debug_folder:
-        step2_5_clahe = os.path.join(debug_bin_dir, "debug_step2_5_clahe.png")
-        cv2.imwrite(step2_5_clahe, imagem_np)
+        cv2.imwrite(os.path.join(debug_bin_dir, "debug_clahe.png"), imagem_np)
     
-    # Threshold Otsu invertido
-    _, imagem_bin = cv2.threshold(imagem_np, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    # 3. Binarização combinada (Otsu + Adaptativo)
+    # Threshold Otsu
+    _, thresh_otsu = cv2.threshold(imagem_np, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     
-    if debug and debug_folder:
-        step3_thresh = os.path.join(debug_bin_dir, "debug_step3_threshold.png")
-        cv2.imwrite(step3_thresh, imagem_bin)
+    # Threshold adaptativo
+    thresh_adaptive = cv2.adaptiveThreshold(
+        imagem_np, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 11, 2
+    )
+    
+    # Combina os dois métodos
+    imagem_bin = cv2.addWeighted(thresh_otsu, 0.5, thresh_adaptive, 0.5, 0)
+    _, imagem_bin = cv2.threshold(imagem_bin, 127, 255, cv2.THRESH_BINARY)
 
-    # Morfologia melhorada
-    kernel = np.ones((3,3), np.uint8)
-    imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_CLOSE, kernel, iterations=2)
-    imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_OPEN, kernel, iterations=1)
+    if debug and debug_folder:
+        cv2.imwrite(os.path.join(debug_bin_dir, "debug_otsu.png"), thresh_otsu)
+        cv2.imwrite(os.path.join(debug_bin_dir, "debug_adaptive.png"), thresh_adaptive)
+        cv2.imwrite(os.path.join(debug_bin_dir, "debug_combined.png"), imagem_bin)
+
+    # 4. Operações morfológicas otimizadas
+    # Remove ruído pequeno
+    kernel_noise = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_OPEN, kernel_noise, iterations=1)
+    
+    # Conecta componentes próximos
+    kernel_connect = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_CLOSE, kernel_connect, iterations=1)
 
     if debug and debug_folder:
-        step4_morph = os.path.join(debug_bin_dir, "debug_step4_morph.png")
-        cv2.imwrite(step4_morph, imagem_bin)
+        cv2.imwrite(os.path.join(debug_bin_dir, "debug_final_binary.png"), imagem_bin)
 
     resultados = {}
     questao_num = 1
@@ -433,47 +456,125 @@ def detectar_respostas_por_grid(
             y = roi["y"]
             w = roi["width"]
             h = roi["height"]
-            if w is None or h is None:
+            
+            # Validação da ROI
+            if w is None or h is None or w <= 0 or h <= 0:
                 resultados[questao_nome] = "ROI inválido"
                 questao_num += 1
                 continue
             
+            # Garante que a ROI está dentro dos limites da imagem
+            x = max(0, x)
+            y = max(0, y)
+            w = min(w, imagem_bin.shape[1] - x)
+            h = min(h, imagem_bin.shape[0] - y)
+            
+            if w <= 0 or h <= 0:
+                resultados[questao_nome] = "ROI fora dos limites"
+                questao_num += 1
+                continue
+            
+            # Extrai a ROI
             roi_img = imagem_bin[y:y+h, x:x+w]
+            
             if debug and debug_folder:
-                roi_filename = os.path.join(debug_rois_dir, f"debug_grid_roi_{questao_num}.png")
-                cv2.imwrite(roi_filename, roi_img)
+                cv2.imwrite(os.path.join(debug_rois_dir, f"debug_roi_{questao_num}.png"), roi_img)
 
+            # Análise das sub-ROIs (alternativas) com algoritmo melhorado
             sub_w = w // num_alternativas
             fill_ratios = []
+            
             for alt_i in range(num_alternativas):
-                sub_roi = roi_img[:, alt_i*sub_w:(alt_i+1)*sub_w]
+                start_x = alt_i * sub_w
+                end_x = (alt_i + 1) * sub_w if alt_i < num_alternativas - 1 else w
+                
+                # Garante que não ultrapassa os limites
+                end_x = min(end_x, w)
+                
+                if start_x >= end_x:
+                    fill_ratios.append(0.0)
+                    continue
+                
+                sub_roi = roi_img[:, start_x:end_x]
+                
+                if sub_roi.size == 0:
+                    fill_ratios.append(0.0)
+                    continue
+                
+                # Calcula a densidade de pixels brancos (marcação)
                 area_sub = sub_roi.shape[0] * sub_roi.shape[1]
                 count_white = cv2.countNonZero(sub_roi)
                 ratio = count_white / area_sub if area_sub > 0 else 0
                 fill_ratios.append(ratio)
+                
                 if debug and debug_folder:
-                    alt_filename = f"debug_grid_roi_{questao_num}_alt_{alternativas[alt_i]}.png"
+                    alt_filename = f"debug_roi_{questao_num}_alt_{alternativas[alt_i]}_ratio_{ratio:.3f}.png"
                     alt_file_path = os.path.join(debug_subrois_dir, alt_filename)
                     cv2.imwrite(alt_file_path, sub_roi)
             
-            # Algoritmo melhorado para detecção de alternativas marcadas
-            max_ratio = max(fill_ratios)
-            marcadas = []
+            # Algoritmo melhorado para determinar a resposta
+            max_ratio = max(fill_ratios) if fill_ratios else 0
             
-            # Considera apenas alternativas com preenchimento significativo
+            # Threshold dinâmico baseado na qualidade da detecção
+            dynamic_threshold = threshold_fill
+            
+            # Ajusta o threshold baseado na qualidade geral da imagem
+            if max_ratio < threshold_fill * 0.5:
+                dynamic_threshold = threshold_fill * 0.6  # Mais sensível para imagens fracas
+            elif max_ratio > threshold_fill * 3:
+                dynamic_threshold = threshold_fill * 1.5  # Menos sensível para imagens muito contrastadas
+            
+            # Encontra alternativas que passam no threshold
+            marcadas = []
             for i, ratio in enumerate(fill_ratios):
-                # Se o ratio for pelo menos 70% do máximo, considera como marcado
-                if ratio >= threshold_fill and ratio >= max_ratio * 0.7:
+                # Uma alternativa é considerada marcada se:
+                # 1. Passa no threshold dinâmico
+                # 2. É pelo menos 60% do valor máximo (evita ruído)
+                if ratio >= dynamic_threshold and ratio >= max_ratio * 0.6:
                     marcadas.append(i)
             
+            # Determina o resultado final com lógica melhorada
             if len(marcadas) == 0:
-                resultado = f"Não marcado (max fill: {max_ratio:.2f})"
-            elif len(marcadas) > 1:
-                resultado = "N"
-            else:
+                # Nenhuma alternativa claramente marcada
+                if max_ratio > threshold_fill * 0.3:
+                    # Há algum preenchimento, mas fraco
+                    # Verifica se há uma alternativa que se destaca
+                    best_alt = fill_ratios.index(max_ratio)
+                    if max_ratio >= threshold_fill * 0.5:
+                        resultado = f"{alternativas[best_alt]} (fraco)"
+                    else:
+                        resultado = f"Não marcado (max: {max_ratio:.2f})"
+                else:
+                    resultado = "Não marcado"
+                    
+            elif len(marcadas) == 1:
+                # Exatamente uma alternativa marcada - resultado ideal
                 resultado = alternativas[marcadas[0]]
+                
+            else:
+                # Múltiplas alternativas marcadas
+                # Verifica se uma se destaca significativamente
+                marked_ratios = [fill_ratios[i] for i in marcadas]
+                max_marked = max(marked_ratios)
+                
+                # Conta quantas alternativas têm valores próximos ao máximo
+                strong_marks = [i for i in marcadas if fill_ratios[i] >= max_marked * 0.85]
+                
+                if len(strong_marks) == 1:
+                    # Uma alternativa se destaca claramente
+                    resultado = f"{alternativas[strong_marks[0]]} (múltiplo)"
+                else:
+                    # Múltiplas marcações equivalentes - anula a questão
+                    resultado = "N"
             
             resultados[questao_nome] = resultado
+            
+            # Log para debug
+            if debug:
+                logger.debug(f"{questao_nome}: ratios={[f'{r:.3f}' for r in fill_ratios]}, "
+                           f"max={max_ratio:.3f}, threshold={dynamic_threshold:.3f}, "
+                           f"marcadas={marcadas}, resultado='{resultado}'")
+            
             questao_num += 1
     
     return resultados

@@ -5,13 +5,14 @@ from PIL import Image
 import logging
 import pytesseract
 import re
+from pytesseract import image_to_data, Output
 
 logger = logging.getLogger('DetectorMatricula')
 
 class DetectorMatricula:
     """
     Classe para detecção e reconhecimento de matrículas em documentos,
-    usando OCR tradicional e múltiplas técnicas de pré-processamento.
+    usando OCR tradicional, ROI, fallback heurístico e técnicas de pré-processamento.
     """
 
     def __init__(self, config=None):
@@ -49,39 +50,57 @@ class DetectorMatricula:
 
         roi_pil = self._extrair_roi_matricula(imagem_pil, debug_folder)
 
-        if roi_pil is None:
-            logger.error("Não foi possível extrair ROI da matrícula")
-            return "", 0.0
+        if roi_pil is None or roi_pil.size[0] < 10:
+            logger.warning("Não foi possível extrair ROI da matrícula. Tentando OCR geral.")
+            return self._ocr_semantico_global(imagem_pil)
 
         processed_images = self._aplicar_tecnicas_pre_processamento(roi_pil)
-
         resultados = []
 
         for technique, img in processed_images:
             img_morph = self._aplicar_morfologia_adaptativa(img)
-
             for config in self.tesseract_configs:
                 try:
-                    texto = pytesseract.image_to_string(
-                        img_morph, config=config
-                    ).strip()
-
+                    texto = pytesseract.image_to_string(img_morph, config=config).strip()
                     texto = self._corrigir_erros_comuns(texto)
-
                     if texto and self._validar_matricula(texto):
                         resultados.append((texto, 0.8))
                 except Exception as e:
                     logger.error(f"Erro OCR {technique}: {e}")
 
-        if not resultados:
-            logger.warning("Não foi possível reconhecer matrícula válida")
-            return "", 0.0
+        if resultados:
+            resultados.sort(key=lambda x: x[1], reverse=True)
+            melhor_texto, melhor_confianca = resultados[0]
+            logger.info(f"Matrícula reconhecida: '{melhor_texto}' (confiança: {melhor_confianca})")
+            return melhor_texto, melhor_confianca
 
-        resultados.sort(key=lambda x: x[1], reverse=True)
-        melhor_texto, melhor_confianca = resultados[0]
+        logger.warning("Tentando OCR geral com heurística de fallback...")
+        return self._ocr_semantico_global(imagem_pil)
 
-        logger.info(f"Matrícula reconhecida: '{melhor_texto}' (confiança: {melhor_confianca})")
-        return melhor_texto, melhor_confianca
+    def _ocr_semantico_global(self, imagem_pil):
+        dados = image_to_data(imagem_pil, output_type=Output.DICT, lang='por')
+        melhores = []
+
+        for i, palavra in enumerate(dados['text']):
+            texto = palavra.strip().lower()
+            conf = float(dados['conf'][i]) if str(dados['conf'][i]).replace('.', '', 1).isdigit() else 0
+            top = dados['top'][i]
+
+            if texto in ['matrícula', 'matricula']:
+                for j in range(i + 1, min(i + 5, len(dados['text']))):
+                    candidato = dados['text'][j].strip()
+                    if candidato.isdigit() and self._validar_matricula(candidato):
+                        return candidato, conf
+
+            if texto.isdigit() and self._validar_matricula(texto):
+                melhores.append((texto, conf, top))
+
+        if melhores:
+            melhores.sort(key=lambda x: (x[2], -x[1]))
+            melhor = melhores[0]
+            return melhor[0], melhor[1]
+
+        return "", 0.0
 
     def _extrair_roi_matricula(self, imagem_pil, debug_folder=None):
         if "matricula_roi" in self.config:
@@ -115,31 +134,6 @@ class DetectorMatricula:
             except Exception as e:
                 logger.error(f"Erro no template matching: {e}")
 
-        try:
-            from modules.core.detector import detectar_matricula_por_contornos
-            roi_coords = detectar_matricula_por_contornos(imagem_pil)
-            if roi_coords:
-                x, y, w, h = roi_coords
-                roi = imagem_pil.crop((x, y, x+w, y+h))
-                if debug_folder:
-                    roi.save(os.path.join(debug_folder, "matricula_roi_contornos.png"))
-                return roi
-        except Exception as e:
-            logger.error(f"Erro na detecção por contornos: {e}")
-
-        try:
-            from modules.core.detector import detectar_matricula_por_hough
-            roi_coords = detectar_matricula_por_hough(imagem_pil)
-            if roi_coords:
-                x, y, w, h = roi_coords
-                roi = imagem_pil.crop((x, y, x+w, y+h))
-                if debug_folder:
-                    roi.save(os.path.join(debug_folder, "matricula_roi_hough.png"))
-                return roi
-        except Exception as e:
-            logger.error(f"Erro na detecção por Hough: {e}")
-
-        logger.warning("Não foi possível detectar ROI específica, usando imagem completa")
         return imagem_pil
 
     def _aplicar_tecnicas_pre_processamento(self, imagem_pil):
@@ -192,8 +186,4 @@ class DetectorMatricula:
         return re.sub(r'\D', '', texto)
 
     def _validar_matricula(self, texto):
-        if not texto.isdigit():
-            return False
-        if not (self.min_length <= len(texto) <= self.max_length):
-            return False
-        return True
+        return texto.isdigit() and self.min_length <= len(texto) <= self.max_length
