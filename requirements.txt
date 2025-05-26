@@ -14,3 +14,4 @@ PyPDF2
 cryptography
 PyJWT
 sqlmodel
+pyinstaller
