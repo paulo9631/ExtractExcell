@@ -108,7 +108,7 @@ class DetectorMatricula:
                 x, y, w, h = self.config["matricula_roi"].values()
                 roi = imagem_pil.crop((x, y, x+w, y+h))
                 if debug_folder:
-                    os.makedirs(debug_folder, exist_ok=True)
+                    os.makedirs(debug_folder, exist_ok=False)
                     roi.save(os.path.join(debug_folder, "matricula_roi.png"))
                 return roi
             except Exception as e:
