@@ -5,4 +5,8 @@ _init_.py
 __pycache__/
 modules/_pycache_
 tokens.enc/
-test_inep.py/
+test_inep.py/build/main/main.pkg
+dist/main.exe
+dist/main.exe
+build/
+dist/

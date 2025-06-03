@@ -1,3 +1,4 @@
+import sys
 import os
 from datetime import datetime
 import cv2
@@ -20,6 +21,15 @@ from modules.core.detector_matricula import DetectorMatricula
 from modules.utils import logger
 from modules.DB.operations import buscar_por_matricula_excel
 
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class WorkerSignals(QObject):
     progress = pyqtSignal(int)
@@ -186,7 +196,8 @@ class ProcessWorker(QRunnable):
                 pts_ref = None
                 if "template_path" in self.config:
                     try:
-                        template = Image.open(self.config["template_path"])
+                        template_path = resource_path(self.config["template_path"])
+                        template = Image.open(template_path)
                         imagem_proc = pre_processar_imagem(
                             imagens[0], 
                             equalizar=True, 

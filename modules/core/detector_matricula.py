@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 import numpy as np
 from PIL import Image
@@ -8,6 +9,16 @@ import re
 from pytesseract import image_to_data, Output
 
 logger = logging.getLogger('DetectorMatricula')
+
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class DetectorMatricula:
     """
@@ -117,7 +128,7 @@ class DetectorMatricula:
         if "matricula_template_path" in self.config:
             try:
                 from modules.core.detector import detectar_area_cabecalho_template, pre_processar_imagem
-                template_path = self.config["matricula_template_path"]
+                template_path = resource_path(self.config["matricula_template_path"])
                 if os.path.exists(template_path):
                     template = Image.open(template_path)
                     img_proc = pre_processar_imagem(imagem_pil)

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 from PIL import Image
 from PIL.ImageQt import ImageQt
 
+from modules.utils import resource_path  # Importa aqui
 from modules.ui.icon_provider import IconProvider
 
 THUMB_SIZE = (180, 250)  
@@ -21,7 +22,7 @@ class _ThumbWorker(QThread):
 
     def __init__(self, pdf_path: str, parent: QWidget | None = None):
         super().__init__(parent)
-        self._pdf_path = pdf_path
+        self._pdf_path = resource_path(pdf_path)  # Usa resource_path
 
     def run(self):  # noqa: D401  ‑ Qt style
         try:
@@ -48,7 +49,7 @@ class PDFThumbnail(QWidget):
 
     def __init__(self, pdf_path: str, index: int, parent: QWidget | None = None):
         super().__init__(parent)
-        self._pdf_path = pdf_path
+        self._pdf_path = resource_path(pdf_path)  # Usa resource_path
         self._index = index
         self._worker: _ThumbWorker | None = None 
         self._build_ui()

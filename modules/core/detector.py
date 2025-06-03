@@ -209,7 +209,7 @@ def detectar_respostas_por_grid(
     grid_rois,
     num_alternativas=4,
     threshold_fill=0.3,
-    debug=True,
+    debug=False,
     debug_folder=None
 ):
     if num_alternativas == 4:

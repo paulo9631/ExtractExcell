@@ -10,6 +10,7 @@ from PyQt6.QtGui import QColor
 from modules.core.pdf_filler import preencher_pdf_com_info
 from PyPDF2 import PdfMerger
 import tempfile
+from modules.utils import resource_path
 
 
 class PDFFillerWindow(QDialog):
@@ -41,7 +42,8 @@ class PDFFillerWindow(QDialog):
         self.turmas_disponiveis = []
         self.turma_selecionada = None
 
-        self.modelo_path = "modelo_gabarito_base.pdf"
+        # Usa resource_path para garantir caminho correto no exe
+        self.modelo_path = resource_path("modelo_gabarito_base.pdf")
         if not os.path.exists(self.modelo_path):
             QMessageBox.critical(self, "Erro", f"Modelo PDF não encontrado em: {self.modelo_path}")
             self.close()
@@ -414,6 +416,7 @@ class PDFFillerWindow(QDialog):
         caminho, _ = QFileDialog.getOpenFileName(self, "Selecionar Modelo PDF", "", "Arquivos PDF (*.pdf)")
         if caminho:
             if os.path.exists(caminho):
+                # Armazena caminho absoluto e usa resource_path se quiser padronizar
                 self.modelo_path = caminho
                 self.atualizar_label_modelo()
             else:

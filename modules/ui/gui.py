@@ -23,6 +23,8 @@ from modules.ui.pdf_preview import PDFPreviewDialog
 from modules.ui.modern_widgets import ModernButton, ModernProgressBar, InfoCard, GlassCard
 from modules.ui.icon_provider import IconProvider
 from modules.ui.pdf_filler_window import PDFFillerWindow
+from modules.utils import resource_path
+
 
 
 class PDFLoaderSignals(QObject):
@@ -189,7 +191,7 @@ class GabaritoApp(QMainWindow):
         hl.setSpacing(15)
 
         lbl_logo = QLabel()
-        pix = QPixmap("assets/ideedutec_icon.png").scaled(45, 45, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        pix = QPixmap(resource_path("assets/ideedutec_icon.png")).scaled(45, 45, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         lbl_logo.setPixmap(pix)
         lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl.addWidget(lbl_logo)

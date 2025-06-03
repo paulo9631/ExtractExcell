@@ -1,6 +1,17 @@
 import fitz
 import os
+import sys
 from typing import List, Dict
+
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], output_path: str):
     """
@@ -10,6 +21,8 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
     :param dados_alunos: Lista de dicionários com os dados dos alunos.
     :param output_path: Caminho final para salvar o PDF combinado.
     """
+    modelo_pdf_path = resource_path(modelo_pdf_path)
+
     if not os.path.exists(modelo_pdf_path):
         raise FileNotFoundError(f"Modelo PDF não encontrado: {modelo_pdf_path}")
 

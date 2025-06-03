@@ -1,5 +1,17 @@
+import sys
+import os
 import pandas as pd
 from openpyxl import load_workbook
+
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def encontrar_proxima_linha_vazia(ws, linha_inicial=30):
     resposta_cols = ["I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
@@ -20,11 +32,13 @@ def encontrar_proxima_linha_vazia(ws, linha_inicial=30):
 def importar_para_planilha(dados, caminho_template):
     print(f"[LOG] Função importar_para_planilha chamada para o arquivo '{caminho_template}'. Número de registros a importar: {len(dados)}")
     
+    real_path = resource_path(caminho_template)
+
     try:
-        book = load_workbook(caminho_template)
-        print(f"[LOG] Planilha '{caminho_template}' carregada com sucesso.")
+        book = load_workbook(real_path)
+        print(f"[LOG] Planilha '{real_path}' carregada com sucesso.")
     except Exception as e:
-        print(f"[ERRO] Falha ao carregar '{caminho_template}': {e}")
+        print(f"[ERRO] Falha ao carregar '{real_path}': {e}")
         return
     
     sheet_name = "GERAL"
@@ -82,7 +96,7 @@ def importar_para_planilha(dados, caminho_template):
         print(f"[LOG] Inserido registro {idx+1} na linha {row_inicial}")
 
     try:
-        book.save(caminho_template)
-        print(f"[LOG] Dados salvos na planilha '{caminho_template}'.")
+        book.save(real_path)
+        print(f"[LOG] Dados salvos na planilha '{real_path}'.")
     except Exception as e:
-        print(f"[ERRO] Falha ao salvar '{caminho_template}': {e}")
+        print(f"[ERRO] Falha ao salvar '{real_path}': {e}")
