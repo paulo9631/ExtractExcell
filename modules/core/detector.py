@@ -216,6 +216,7 @@ def detectar_respostas_por_grid(
         alternativas = ['A','B','C','D']
     else:
         alternativas = ['A','B','C','D','E']
+
     if debug and debug_folder:
         os.makedirs(debug_folder, exist_ok=True)
         debug_bin_dir = os.path.join(debug_folder, "bin")
@@ -225,15 +226,23 @@ def detectar_respostas_por_grid(
         os.makedirs(debug_rois_dir, exist_ok=True)
         os.makedirs(debug_subrois_dir, exist_ok=True)
         imagem.save(os.path.join(debug_bin_dir, "debug_original.png"))
+
+    debug_image = imagem.copy()
+    draw = ImageDraw.Draw(debug_image)
+
     imagem_gray = imagem.convert("L")
     imagem_np = np.array(imagem_gray)
+
     if debug and debug_folder:
         cv2.imwrite(os.path.join(debug_bin_dir, "debug_gray.png"), imagem_np)
+
     imagem_np = cv2.bilateralFilter(imagem_np, 5, 50, 50)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     imagem_np = clahe.apply(imagem_np)
+
     if debug and debug_folder:
         cv2.imwrite(os.path.join(debug_bin_dir, "debug_clahe.png"), imagem_np)
+
     _, thresh_otsu = cv2.threshold(imagem_np, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     thresh_adaptive = cv2.adaptiveThreshold(
         imagem_np, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
@@ -241,18 +250,23 @@ def detectar_respostas_por_grid(
     )
     imagem_bin = cv2.addWeighted(thresh_otsu, 0.5, thresh_adaptive, 0.5, 0)
     _, imagem_bin = cv2.threshold(imagem_bin, 127, 255, cv2.THRESH_BINARY)
+
     if debug and debug_folder:
         cv2.imwrite(os.path.join(debug_bin_dir, "debug_otsu.png"), thresh_otsu)
         cv2.imwrite(os.path.join(debug_bin_dir, "debug_adaptive.png"), thresh_adaptive)
         cv2.imwrite(os.path.join(debug_bin_dir, "debug_combined.png"), imagem_bin)
+
     kernel_noise = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
     imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_OPEN, kernel_noise, iterations=1)
     kernel_connect = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     imagem_bin = cv2.morphologyEx(imagem_bin, cv2.MORPH_CLOSE, kernel_connect, iterations=1)
+
     if debug and debug_folder:
         cv2.imwrite(os.path.join(debug_bin_dir, "debug_final_binary.png"), imagem_bin)
+
     resultados = {}
     questao_num = 1
+
     for col_rois in grid_rois:
         for roi in col_rois:
             questao_nome = f"Questao {questao_num}"
@@ -260,23 +274,33 @@ def detectar_respostas_por_grid(
             y = roi["y"]
             w = roi["width"]
             h = roi["height"]
+
+            draw.rectangle([x, y, x+w, y+h], outline="red", width=2)
+            draw.text((x+5, y+5), f"{questao_num}", fill="red")
+
             if w is None or h is None or w <= 0 or h <= 0:
                 resultados[questao_nome] = "ROI inválido"
                 questao_num += 1
                 continue
+
             x = max(0, x)
             y = max(0, y)
             w = min(w, imagem_bin.shape[1] - x)
             h = min(h, imagem_bin.shape[0] - y)
+
             if w <= 0 or h <= 0:
                 resultados[questao_nome] = "ROI fora dos limites"
                 questao_num += 1
                 continue
+
             roi_img = imagem_bin[y:y+h, x:x+w]
+
             if debug and debug_folder:
                 cv2.imwrite(os.path.join(debug_rois_dir, f"debug_roi_{questao_num}.png"), roi_img)
+
             sub_w = w // num_alternativas
             fill_ratios = []
+
             for alt_i in range(num_alternativas):
                 start_x = alt_i * sub_w
                 end_x = (alt_i + 1) * sub_w if alt_i < num_alternativas - 1 else w
@@ -296,16 +320,20 @@ def detectar_respostas_por_grid(
                     alt_filename = f"debug_roi_{questao_num}_alt_{alternativas[alt_i]}_ratio_{ratio:.3f}.png"
                     alt_file_path = os.path.join(debug_subrois_dir, alt_filename)
                     cv2.imwrite(alt_file_path, sub_roi)
+
             max_ratio = max(fill_ratios) if fill_ratios else 0
             dynamic_threshold = threshold_fill
+
             if max_ratio < threshold_fill * 0.5:
                 dynamic_threshold = threshold_fill * 0.6
             elif max_ratio > threshold_fill * 3:
                 dynamic_threshold = threshold_fill * 1.5
+
             marcadas = []
             for i, ratio in enumerate(fill_ratios):
                 if ratio >= dynamic_threshold and ratio >= max_ratio * 0.6:
                     marcadas.append(i)
+
             if len(marcadas) == 0:
                 if max_ratio > threshold_fill * 0.3:
                     best_alt = fill_ratios.index(max_ratio)
@@ -318,17 +346,18 @@ def detectar_respostas_por_grid(
             elif len(marcadas) == 1:
                 resultado = alternativas[marcadas[0]]
             else:
-                marked_ratios = [fill_ratios[i] for i in marcadas]
-                max_marked = max(marked_ratios)
-                strong_marks = [i for i in marcadas if fill_ratios[i] >= max_marked * 0.85]
-                if len(strong_marks) == 1:
-                    resultado = f"{alternativas[strong_marks[0]]} (múltiplo)"
-                else:
-                    resultado = "N"
+                resultado = "N"
+
             resultados[questao_nome] = resultado
+
             if debug:
                 logger.debug(f"{questao_nome}: ratios={[f'{r:.3f}' for r in fill_ratios]}, "
                            f"max={max_ratio:.3f}, threshold={dynamic_threshold:.3f}, "
                            f"marcadas={marcadas}, resultado='{resultado}'")
             questao_num += 1
+
+    if debug and debug_folder:
+        debug_boxes_path = os.path.join(debug_folder, "debug_respostas_boxes.png")
+        debug_image.save(debug_boxes_path)
+
     return resultados

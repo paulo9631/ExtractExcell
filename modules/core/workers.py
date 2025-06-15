@@ -114,12 +114,13 @@ def preprocess_roi_avancado(roi_pil, debug_folder=None, idx=0):
     return Image.fromarray(processed_versions['combined'])
 
 class ProcessWorker(QRunnable):
-    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido, client: StudentAPIClient):
+    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido, grid_rois, client: StudentAPIClient):
         super().__init__()
         self.pdf_paths = pdf_paths
         self.config = config
         self.n_alternativas = n_alternativas
         self.dpi_escolhido = dpi_escolhido
+        self.grid_rois = grid_rois 
         self.client = client
         self.signals = WorkerSignals()
         self.detector_matricula = DetectorMatricula(config)
@@ -175,7 +176,7 @@ class ProcessWorker(QRunnable):
                 logger.error(msg)
                 self.signals.finished.emit([])
                 return
-            grid_rois = self.config["grid_rois"]
+            grid_rois = self.grid_rois
             pdf_count = len(self.pdf_paths)
             passo = 80 // max(pdf_count, 1)
             all_pages = []
@@ -249,7 +250,7 @@ class ProcessWorker(QRunnable):
                         grid_rois=grid_rois,
                         num_alternativas=self.n_alternativas,
                         threshold_fill=threshold_fill,
-                        debug=False, 
+                        debug=True, 
                         debug_folder=debug_subdir
                     )
                     respostas_ordenadas = {}

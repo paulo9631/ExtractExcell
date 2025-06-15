@@ -395,6 +395,18 @@ class GabaritoApp(QMainWindow):
         thresh_layout.addWidget(self.lbl_thresh, alignment=Qt.AlignmentFlag.AlignRight)
         rl.addWidget(grp_thresh)
 
+        grp_quest = QGroupBox("Quantidade de Questões")
+        quest_layout = QVBoxLayout(grp_quest)
+        self.combo_quest = QComboBox()
+        self.combo_quest.addItem("10 questões", 10)
+        self.combo_quest.addItem("20 questões", 20)
+        self.combo_quest.addItem("30 questões", 30)
+        self.combo_quest.addItem("40 questões", 40)
+        self.combo_quest.setCurrentIndex(1)  # Padrão: 20
+        quest_layout.addWidget(self.combo_quest)
+        rl.addWidget(grp_quest)
+
+
         self.progress = ModernProgressBar()
         rl.addWidget(self.progress)
 
@@ -513,6 +525,16 @@ class GabaritoApp(QMainWindow):
         self.atualizar_status("Processando gabaritos...", "info")
         self.progress.setValue(5)
         self.config["threshold_fill"] = self.slider.value() / 100
+
+        n_questoes = self.combo_quest.currentData()
+        grid_rois = self.config["grid_rois"].get(str(n_questoes), [])
+
+        # Escolhe o template certo:
+        template_path = self.config["template_path"].get(str(n_questoes), None)
+
+        # Atualiza o config para este processamento:
+        self.config["template_path_atual"] = template_path
+        
         res_txt = self.res_combo.currentText()
         dpi = 300 if "300" in res_txt else 200 if "200" in res_txt else 150
 
@@ -524,6 +546,7 @@ class GabaritoApp(QMainWindow):
             config=self.config,
             n_alternativas=self.combo_alt.currentData(),
             dpi_escolhido=dpi,
+            grid_rois=grid_rois,
             client=self.client
         )
         worker.signals.progress.connect(self.progress.setValue)
