@@ -69,6 +69,8 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
                     page.insert_text(coordenadas["nasc_m1"], mes[0], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                     page.insert_text(coordenadas["nasc_m2"], mes[1], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                 if len(ano) == 4:
+                    page.insert_text(coordenadas["nasc_a1"], ano[0], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+                    page.insert_text(coordenadas["nasc_a2"], ano[1], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                     page.insert_text(coordenadas["nasc_a3"], ano[2], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                     page.insert_text(coordenadas["nasc_a4"], ano[3], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
 
