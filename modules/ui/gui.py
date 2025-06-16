@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QGroupBox, QGridLayout,
     QSplitter, QFormLayout, QComboBox, QSlider, QHBoxLayout, QMessageBox,
     QToolButton, QGraphicsOpacityEffect, QSpacerItem, QSizePolicy,
-    QDialog, QPushButton, QFrame, QStackedWidget
+    QDialog, QPushButton, QFrame, QStackedWidget, QLineEdit
 )
 
 from modules.core.converter import converter_pdf_em_imagens
@@ -405,6 +405,13 @@ class GabaritoApp(QMainWindow):
         self.combo_quest.setCurrentIndex(1)  # Padrão: 20
         quest_layout.addWidget(self.combo_quest)
         rl.addWidget(grp_quest)
+        
+        grp_google = QGroupBox("Link do Google Sheets (obrigatório)")
+        google_layout = QVBoxLayout(grp_google)
+        self.google_sheet_input = QLineEdit()
+        self.google_sheet_input.setPlaceholderText("Cole aqui o link do Google Sheets...")
+        google_layout.addWidget(self.google_sheet_input)
+        rl.addWidget(grp_google)
 
 
         self.progress = ModernProgressBar()
@@ -538,9 +545,17 @@ class GabaritoApp(QMainWindow):
         res_txt = self.res_combo.currentText()
         dpi = 300 if "300" in res_txt else 200 if "200" in res_txt else 150
 
+        link_google = self.google_sheet_input.text().strip()
+        if not link_google:
+            QMessageBox.warning(self, "Erro", "Você deve colar o link do Google Sheets antes de processar!")
+            self.btn_processar.setEnabled(True)
+            self.btn_processar.setText("Iniciar Processamento")
+            return
+        
         self.btn_processar.setEnabled(False)
         self.btn_processar.setText("Processando...")
-
+        
+    
         worker = ProcessWorker(
             pdf_paths=self.pdf_paths,
             config=self.config,
@@ -549,6 +564,9 @@ class GabaritoApp(QMainWindow):
             grid_rois=grid_rois,
             client=self.client
         )
+        worker.google_sheet_id_dinamico = link_google  # passa dinamicamente
+        worker.signals.finished.connect(self.processamento_concluido)
+        worker.signals.error.connect(self.mostrar_erro)
         worker.signals.progress.connect(self.progress.setValue)
         worker.signals.message.connect(self.atualizar_status)
         worker.signals.error.connect(lambda e: QMessageBox.critical(self, "Erro", e))
@@ -556,25 +574,24 @@ class GabaritoApp(QMainWindow):
         self.threadpool.start(worker)
 
     def on_process_finished(self, all_pages):
-        self.progress.setValue(90)
         self.btn_processar.setEnabled(True)
         self.btn_processar.setText("Iniciar Processamento")
+        self.progress.setValue(90)
+
         if not all_pages:
             self.progress.setValue(100)
             self.atualizar_status("Processamento concluído (sem resultados).", "warning")
+            QMessageBox.warning(self, "Aviso", "Processamento concluído mas sem resultados.")
             return
+
         self.resultados = all_pages
         dlg = ResultadoDialog(all_pages, self)
         dlg.exec()
-        reply = QMessageBox.question(self, "Exportar", "Deseja exportar os resultados para Excel?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            path, _ = QFileDialog.getSaveFileName(self, "Salvar Planilha", "", "XLSX (*.xlsx)")
-            if path:
-                importar_para_planilha(all_pages, path)
-                QMessageBox.information(self, "Sucesso", f"Dados importados em:\n{path}")
+
         self.progress.setValue(100)
-        self.atualizar_status("Processamento concluído com sucesso.", "success")
+        self.atualizar_status("Processamento e exportação concluídos com sucesso!", "success")
+        QMessageBox.information(self, "Sucesso", "Processamento e exportação concluídos com sucesso! ")
+
 
     def abrir_pdf_filler(self):
         dlg = PDFFillerWindow(self.client)
@@ -587,7 +604,8 @@ class GabaritoApp(QMainWindow):
                 if hasattr(widget, 'mark_processed'):
                     widget.mark_processed(True)
                 break
-
+            
+    
     def closeEvent(self, event):
         super().closeEvent(event)
 

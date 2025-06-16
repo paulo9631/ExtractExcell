@@ -14,4 +14,8 @@ PyPDF2
 cryptography
 PyJWT
 sqlmodel
-pyinstaller 
+pyinstaller
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2

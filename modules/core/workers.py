@@ -20,6 +20,8 @@ from modules.core.student_api import StudentAPIClient
 from modules.core.detector_matricula import DetectorMatricula
 from modules.utils import logger
 from modules.DB.operations import buscar_por_matricula_excel
+from modules.core.exporter import importar_para_google_sheets
+
 
 def resource_path(relative_path):
     """
@@ -324,7 +326,27 @@ class ProcessWorker(QRunnable):
                 self.signals.progress.emit((idx+1) * passo)
                 logger.debug(f"[Worker] PDF {idx+1}/{pdf_count} completed")
             logger.info(f"[Worker] Enhanced processing completed. Total pages: {len(all_pages)}")
+            
+            google_sheet_id = getattr(self, "google_sheet_id_dinamico", None)
+            if not google_sheet_id:
+                logger.warning("[Worker] Nenhum link do Google Sheets foi fornecido pela interface. Exportação cancelada.")
+            else:
+                logger.info("[Worker] Iniciando exportação para Google Sheets (link dinâmico da GUI)...")
+                importar_para_google_sheets(all_pages, google_sheet_id, "credentials.json")
+            
             self.signals.finished.emit(all_pages)
+            
+            try:
+                google_sheet_id = self.config.get("google_sheet_id", None)
+                if google_sheet_id:
+                    logger.info("[Worker] Iniciando exportação para Google Sheets...")
+                    importar_para_google_sheets(all_pages, google_sheet_id, "credentials.json")
+                else:
+                    logger.info("[Worker] Nenhuma planilha Google configurada. Exportação ignorada.")
+            except Exception as e:
+                logger.error(f"[Worker] Erro ao exportar para Google Sheets: {e}", exc_info=True)
+            
+            
         except Exception as e:
             logger.error(f"Enhanced Worker error: {e}", exc_info=True)
             self.signals.error.emit(str(e))
