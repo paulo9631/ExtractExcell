@@ -327,25 +327,25 @@ class ProcessWorker(QRunnable):
                 logger.debug(f"[Worker] PDF {idx+1}/{pdf_count} completed")
             logger.info(f"[Worker] Enhanced processing completed. Total pages: {len(all_pages)}")
             
+            # Depois de processar tudo:
+            logger.info(f"[Worker] Enhanced processing completed. Total pages: {len(all_pages)}")
+
+            # Exportar para Google Sheets uma única vez
             google_sheet_id = getattr(self, "google_sheet_id_dinamico", None)
             if not google_sheet_id:
-                logger.warning("[Worker] Nenhum link do Google Sheets foi fornecido pela interface. Exportação cancelada.")
-            else:
-                logger.info("[Worker] Iniciando exportação para Google Sheets (link dinâmico da GUI)...")
-                importar_para_google_sheets(all_pages, google_sheet_id, "credentials.json")
-            
-            self.signals.finished.emit(all_pages)
-            
-            try:
                 google_sheet_id = self.config.get("google_sheet_id", None)
-                if google_sheet_id:
+
+            if not google_sheet_id:
+                logger.info("[Worker] Nenhum link do Google Sheets fornecido. Exportação ignorada.")
+            else:
+                try:
                     logger.info("[Worker] Iniciando exportação para Google Sheets...")
                     importar_para_google_sheets(all_pages, google_sheet_id, "credentials.json")
-                else:
-                    logger.info("[Worker] Nenhuma planilha Google configurada. Exportação ignorada.")
-            except Exception as e:
-                logger.error(f"[Worker] Erro ao exportar para Google Sheets: {e}", exc_info=True)
-            
+                except Exception as e:
+                    logger.error(f"[Worker] Erro ao exportar para Google Sheets: {e}", exc_info=True)
+
+            # Finaliza com signal de sucesso
+            self.signals.finished.emit(all_pages)
             
         except Exception as e:
             logger.error(f"Enhanced Worker error: {e}", exc_info=True)

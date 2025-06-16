@@ -564,7 +564,7 @@ class GabaritoApp(QMainWindow):
             grid_rois=grid_rois,
             client=self.client
         )
-        worker.google_sheet_id_dinamico = link_google  # passa dinamicamente
+        worker.google_sheet_id_dinamico = link_google  
         worker.signals.finished.connect(self.processamento_concluido)
         worker.signals.error.connect(self.mostrar_erro)
         worker.signals.progress.connect(self.progress.setValue)
@@ -572,6 +572,17 @@ class GabaritoApp(QMainWindow):
         worker.signals.error.connect(lambda e: QMessageBox.critical(self, "Erro", e))
         worker.signals.finished.connect(self.on_process_finished)
         self.threadpool.start(worker)
+    
+    def processamento_concluido(self, resultado):
+            self.btn_processar.setEnabled(True)
+            self.btn_processar.setText("Iniciar Processamento")
+            QMessageBox.information(self, "Concluído", "Processamento e exportação concluídos com sucesso! 🚀")
+
+    def mostrar_erro(self, erro):
+        self.btn_processar.setEnabled(True)
+        self.btn_processar.setText("Iniciar Processamento")
+        QMessageBox.critical(self, "Erro", f"Ocorreu um erro durante o processamento ou exportação:\n\n{erro}")
+
 
     def on_process_finished(self, all_pages):
         self.btn_processar.setEnabled(True)
@@ -589,8 +600,6 @@ class GabaritoApp(QMainWindow):
         dlg.exec()
 
         self.progress.setValue(100)
-        self.atualizar_status("Processamento e exportação concluídos com sucesso!", "success")
-        QMessageBox.information(self, "Sucesso", "Processamento e exportação concluídos com sucesso! ")
 
 
     def abrir_pdf_filler(self):
