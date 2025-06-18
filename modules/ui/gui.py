@@ -142,10 +142,11 @@ class GabaritoApp(QMainWindow):
         pass
 
     def initUI(self):
-        self.setWindowTitle("Leitor de Gabaritos IDEEDUTEC")
-        self.setMinimumSize(1200, 800)
+        self.setWindowTitle(" ")
+        self.setMinimumSize(1200, 800)  # Tamanho mínimo da janela
         QApplication.instance().setFont(QFont("Segoe UI", 10))
 
+        # Barra de status
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
         self.statusbar.showMessage("Pronto")
@@ -158,13 +159,14 @@ class GabaritoApp(QMainWindow):
             }
         """)
 
+        # Barra de ferramentas
         toolbar = QToolBar("Barra de Ferramentas")
         toolbar.setIconSize(QSize(24, 24))
         toolbar.setMovable(False)
         toolbar.setStyleSheet("""
             QToolBar { 
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-                                           stop:0 #10b981, stop:1 #059669);
+                                        stop:0 #10b981, stop:1 #059669);
                 spacing: 10px; 
                 padding: 8px 15px; 
                 border-bottom: 1px solid #047857;
@@ -185,46 +187,28 @@ class GabaritoApp(QMainWindow):
         """)
         self.addToolBar(toolbar)
 
+        # Cabeçalho com logo e título
         header = QWidget()
         hl = QHBoxLayout(header)
         hl.setContentsMargins(0, 0, 0, 0)
         hl.setSpacing(15)
 
+        # Logo à esquerda
         lbl_logo = QLabel()
         pix = QPixmap(resource_path("assets/ideedutec_icon.png")).scaled(45, 45, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         lbl_logo.setPixmap(pix)
         lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl.addWidget(lbl_logo)
 
-        lbl_title = QLabel("Sistema de Avaliação Diagnóstico")
+        # Título à direita
+        lbl_title = QLabel("Sistema de Avaliações Diagnósticas")
         lbl_title.setStyleSheet("color:white; font-size:20px; font-weight:bold;")
         hl.addWidget(lbl_title)
 
-        btn_filler_header = ModernButton("Gabarito Preenchido", "file-text", False)
-        btn_filler_header.setFixedHeight(40)
-        btn_filler_header.clicked.connect(self.abrir_pdf_filler)
-        btn_filler_header.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255,255,255,0.2);
-                color: white;
-                border: 1px solid rgba(255,255,255,0.3);
-                border-radius: 8px;
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(255,255,255,0.3);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255,255,255,0.4);
-            }
-        """)
-
-        hl.addStretch()
-        hl.addWidget(btn_filler_header)
+        # Ajusta o layout da toolbar para incluir o cabeçalho
         toolbar.addWidget(header)
 
+        # Layout principal
         main = QWidget()
         main.setStyleSheet("""
             QWidget {
@@ -235,6 +219,7 @@ class GabaritoApp(QMainWindow):
         ml.setContentsMargins(20, 20, 20, 20)
         ml.setSpacing(20)
 
+        # Cards com informações
         self.card_pdfs = InfoCard("PDFs Selecionados", "0", "file-text", "#3b82f6")
         self.card_quest = InfoCard("Total de Páginas", "0", "layers", "#10b981")
         self.card_status = InfoCard("Status", "Aguardando", "activity", "#f59e0b")
@@ -246,6 +231,7 @@ class GabaritoApp(QMainWindow):
         info_layout.addWidget(self.card_status)
         ml.addLayout(info_layout)
 
+        # Splitter para separar as áreas
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(1)
@@ -255,6 +241,7 @@ class GabaritoApp(QMainWindow):
             }
         """)
 
+        # Configura a parte esquerda
         left = QFrame()
         left.setStyleSheet("""
             QFrame {
@@ -331,6 +318,7 @@ class GabaritoApp(QMainWindow):
 
         ll.addWidget(btn_container)
 
+        # Configura a parte direita
         right = QFrame()
         right.setStyleSheet("""
             QFrame {
@@ -483,9 +471,54 @@ class GabaritoApp(QMainWindow):
 
     def criar_thumbnails(self):
         for idx, pdf_path in enumerate(self.pdf_paths):
+            # Container para stack thumbnail + botão X
+            container = QFrame()
+            container.setStyleSheet("QFrame { border: none; }")
+            container.setFixedSize(150, 200)  # Ajuste conforme seu PDFThumbnail
+
+            # Usar layout de pilha para sobrepor o botão no thumbnail
+            stack = QStackedWidget(container)
+
+            thumb_widget = QWidget()
+            vlayout = QVBoxLayout(thumb_widget)
+            vlayout.setContentsMargins(0, 0, 0, 0)
+            vlayout.setSpacing(0)
+
             thumb = PDFThumbnail(pdf_path, idx)
             thumb.clicked.connect(lambda p=pdf_path: self.abrir_preview(p))
-            self.thumb_layout.addWidget(thumb, idx // 4, idx % 4)
+            vlayout.addWidget(thumb)
+
+            # Botão X no canto
+            btn_x = QPushButton("✕", container)
+            btn_x.setFixedSize(24, 24)
+            btn_x.setStyleSheet("""
+                QPushButton {
+                    background-color: #ef4444;
+                    color: white;
+                    border: none;
+                    border-radius: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #dc2626;
+                }
+            """)
+            btn_x.move(120, 10)  # Posição no canto superior direito (ajuste se precisar)
+            btn_x.clicked.connect(lambda _, p=pdf_path: self.remover_pdf(p))
+
+            stack.addWidget(thumb_widget)
+            container_layout = QVBoxLayout(container)
+            container_layout.setContentsMargins(0, 0, 0, 0)
+            container_layout.addWidget(stack)
+
+            self.thumb_layout.addWidget(container, idx // 4, idx % 4)
+
+    def remover_pdf(self, pdf_path):
+        if pdf_path in self.pdf_paths:
+            self.pdf_paths.remove(pdf_path)
+            self.limpar_thumbnails()
+            self.criar_thumbnails()
+            self.card_pdfs.set_value(str(len(self.pdf_paths)))
 
     def abrir_preview(self, pdf_path):
         dlg = PDFPreviewDialog(pdf_path, self)

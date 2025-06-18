@@ -4,6 +4,10 @@ import pandas as pd
 from openpyxl import load_workbook
 import gspread
 from google.oauth2.service_account import Credentials
+import shutil
+import tempfile
+from modules.utils import resource_file_out
+
 
 def resource_path(relative_path):
     """
@@ -114,16 +118,20 @@ def extrair_id_google_sheets(link_ou_id: str) -> str:
     return link_ou_id
 
 def importar_para_google_sheets(dados, sheet_link_ou_id, credentials_json="credentials.json"):
+    from operator import itemgetter
     sheet_id = extrair_id_google_sheets(sheet_link_ou_id)
 
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
-    creds = Credentials.from_service_account_file(credentials_json, scopes=scopes)
+    creds = Credentials.from_service_account_file(resource_file_out(credentials_json), scopes=scopes)
     client = gspread.authorize(creds)
     sh = client.open_by_key(sheet_id)
 
     print(f"[OK] Conectado à planilha ID: {sheet_id}")
 
-    for idx, item in enumerate(dados):
+    # ✅ Ordenar todos os dados pelo nome do aluno, insensível a maiúsculas
+    dados_ordenados = sorted(dados, key=lambda x: x.get("OCR", {}).get("nome_aluno", "").lower())
+
+    for idx, item in enumerate(dados_ordenados):
         ocr_info = item.get("OCR", {})
         respostas = item.get("Respostas", {})
 
@@ -171,4 +179,4 @@ def importar_para_google_sheets(dados, sheet_link_ou_id, credentials_json="crede
 
         print(f"[OK] Aluno {idx+1} salvo na linha {linha} da aba '{ws.title}'")
 
-    print("[OK] Exportação para Google Sheets concluída com sucesso 🚀")
+    print("[OK] Exportação para Google Sheets concluída com sucesso")

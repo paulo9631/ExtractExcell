@@ -87,7 +87,7 @@ class PDFFillerWindow(QDialog):
         header_frame.setStyleSheet("background-color: #10b981; border-radius: 8px;")
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(24, 16, 24, 16)
-        header_title = QLabel("Gerador de Gabaritos PDF")
+        header_title = QLabel("Produção de gabarito com os dados dos alunos")
         header_title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
         header_layout.addWidget(header_title)
         header_layout.addStretch()

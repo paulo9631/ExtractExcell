@@ -2,6 +2,8 @@ import sys
 import os
 import json
 import logging
+import tempfile
+import shutil
 
 def resource_path(relative_path):
     """
@@ -12,6 +14,17 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+def resource_file_out(resource_name):
+    """
+    Extrai um arquivo embutido no bundle PyInstaller para o disco (tempfile)
+    e retorna o caminho real.
+    """
+    real_path = resource_path(resource_name)
+    temp_dir = tempfile.gettempdir()
+    temp_path = os.path.join(temp_dir, resource_name)
+    shutil.copy(real_path, temp_path)
+    return temp_path
 
 def carregar_configuracoes(path='config.json', config_padrao=None):
     if config_padrao is None:

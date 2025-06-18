@@ -54,7 +54,7 @@ if __name__ == "__main__":
         config = carregar_configuracoes()
         client = login_window.client  # Cliente autenticado com token
         gui = GabaritoApp(config, client=client)  # GUI recebe o client
-        gui.showFullScreen()
+        gui.show()
         sys.exit(app.exec())
     else:
         sys.exit(0)

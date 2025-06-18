@@ -35,8 +35,8 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
         coordenadas = {
             "escola": (35, 417),
             "nome": (36, 459),
-            "turno": (524, 417),
-            "turma": (473, 417),
+            "turno": (497, 417),
+            "turma": (408, 417),
             "matricula": (319, 417),
             "nasc_d1": (377, 459),
             "nasc_d2": (400, 459),
