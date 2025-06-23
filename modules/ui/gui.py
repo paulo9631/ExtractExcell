@@ -357,7 +357,7 @@ class GabaritoApp(QMainWindow):
         self.combo_alt = QComboBox()
         self.combo_alt.addItem("5 alternativas", 5)
         self.combo_alt.addItem("4 alternativas", 4)
-        self.combo_alt.setCurrentIndex(0)
+        self.combo_alt.setCurrentIndex(1)
         alt_layout.addWidget(self.combo_alt)
         rl.addWidget(grp_alt)
 
@@ -367,7 +367,7 @@ class GabaritoApp(QMainWindow):
         self.res_combo.addItem("150 DPI", 150)
         self.res_combo.addItem("200 DPI", 200)
         self.res_combo.addItem("300 DPI", 300)
-        self.res_combo.setCurrentIndex(1)
+        self.res_combo.setCurrentIndex(2)
         res_layout.addWidget(self.res_combo)
         rl.addWidget(grp_res)
 

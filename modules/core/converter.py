@@ -1,3 +1,14 @@
+import io
+import fitz  # PyMuPDF
+import numpy as np
+import cv2
+from PIL import Image, ImageEnhance
+from pytesseract import image_to_string
+from pytesseract import Output
+
+
+
+
 def converter_pdf_em_imagens(pdf_path, dpi=300):
     """
     Converte um PDF em uma lista de imagens PIL de alta qualidade.
