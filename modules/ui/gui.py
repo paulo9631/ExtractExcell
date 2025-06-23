@@ -143,10 +143,9 @@ class GabaritoApp(QMainWindow):
 
     def initUI(self):
         self.setWindowTitle(" ")
-        self.setMinimumSize(1200, 800)  # Tamanho mínimo da janela
+        self.setMinimumSize(1200, 800)
         QApplication.instance().setFont(QFont("Segoe UI", 10))
 
-        # Barra de status
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
         self.statusbar.showMessage("Pronto")
@@ -159,7 +158,6 @@ class GabaritoApp(QMainWindow):
             }
         """)
 
-        # Barra de ferramentas
         toolbar = QToolBar("Barra de Ferramentas")
         toolbar.setIconSize(QSize(24, 24))
         toolbar.setMovable(False)
@@ -187,25 +185,46 @@ class GabaritoApp(QMainWindow):
         """)
         self.addToolBar(toolbar)
 
-        # Cabeçalho com logo e título
         header = QWidget()
         hl = QHBoxLayout(header)
         hl.setContentsMargins(0, 0, 0, 0)
         hl.setSpacing(15)
 
-        # Logo à esquerda
         lbl_logo = QLabel()
         pix = QPixmap(resource_path("assets/ideedutec_icon.png")).scaled(45, 45, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         lbl_logo.setPixmap(pix)
         lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl.addWidget(lbl_logo)
 
-        # Título à direita
         lbl_title = QLabel("Sistema de Avaliações Diagnósticas")
         lbl_title.setStyleSheet("color:white; font-size:20px; font-weight:bold;")
         hl.addWidget(lbl_title)
 
-        # Ajusta o layout da toolbar para incluir o cabeçalho
+        hl.addStretch()
+
+        btn_filler_header = ModernButton("Gerar Gabaritos", "file-text", False)
+        btn_filler_header.setFixedHeight(40)
+        btn_filler_header.clicked.connect(self.abrir_pdf_filler)
+        btn_filler_header.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255,255,255,0.2);
+                color: white;
+                border: 1px solid rgba(255,255,255,0.3);
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255,255,255,0.3);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255,255,255,0.4);
+            }
+        """)
+
+        hl.addWidget(btn_filler_header)
+
         toolbar.addWidget(header)
 
         # Layout principal

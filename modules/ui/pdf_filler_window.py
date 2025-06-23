@@ -100,12 +100,62 @@ class PDFFillerWindow(QDialog):
         self.stacked_widget = QStackedWidget()
         main_layout.addWidget(self.stacked_widget)
 
-        # Página INEP
-        inep_page = QWidget()
-        inep_layout = QVBoxLayout(inep_page)
-        inep_layout.setContentsMargins(0, 0, 0, 0)
-        inep_layout.setSpacing(16)
+        # Página Principal (inep_page renomeada para main_input_page para refletir o novo conteúdo)
+        main_input_page = QWidget()
+        main_input_layout = QVBoxLayout(main_input_page)
+        main_input_layout.setContentsMargins(0, 0, 0, 0)
+        main_input_layout.setSpacing(16)
 
+        # Botão para selecionar modelo PDF - AGORA MAIS VISÍVEL E NO TOPO
+        model_selection_frame = self.create_frame()
+        model_selection_layout = QVBoxLayout(model_selection_frame)
+        model_selection_layout.setContentsMargins(24, 24, 24, 24)
+        model_selection_layout.setSpacing(16)
+
+        model_title = QLabel("Modelo de Gabarito")
+        model_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1e293b;")
+        model_selection_layout.addWidget(model_title)
+
+        model_description = QLabel("Selecione o arquivo PDF que será usado como modelo para os gabaritos.")
+        model_description.setStyleSheet("color: #64748b; font-size: 14px;")
+        model_selection_layout.addWidget(model_description)
+
+        self.model_name = QLabel(os.path.basename(self.modelo_path))
+        self.model_name.setStyleSheet("font-weight: bold; color: #334155; font-size: 14px; margin-top: 6px;")
+
+        model_control_layout = QHBoxLayout()
+        model_control_layout.addWidget(QLabel("Modelo atual:"))
+        model_control_layout.addWidget(self.model_name)
+        model_control_layout.addStretch()
+
+        btn_selecionar_modelo = self.create_button("Selecionar Modelo PDF", self.btn_primary_style, self.btn_primary_hover, self.btn_primary_pressed)
+        btn_selecionar_modelo.clicked.connect(self.selecionar_modelo_pdf)
+        model_control_layout.addWidget(btn_selecionar_modelo)
+        model_selection_layout.addLayout(model_control_layout)
+        main_input_layout.addWidget(model_selection_frame)
+
+
+        # Excel import - AGORA MAIS VISÍVEL
+        excel_frame = self.create_frame()
+        excel_layout = QVBoxLayout(excel_frame)
+        excel_layout.setContentsMargins(24, 24, 24, 24)
+        excel_layout.setSpacing(16)
+
+        excel_title = QLabel("Gerar através do Excel")
+        excel_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1e293b;")
+        excel_layout.addWidget(excel_title)
+
+        excel_description = QLabel("Importe uma planilha Excel com os dados dos alunos para gerar os gabaritos em lote.")
+        excel_description.setStyleSheet("color: #64748b; font-size: 14px;")
+        excel_layout.addWidget(excel_description)
+
+        excel_btn = self.create_button("Importar Planilha Excel", self.btn_primary_style, self.btn_primary_hover, self.btn_primary_pressed)
+        excel_btn.clicked.connect(self.gerar_atraves_excel)
+        excel_layout.addWidget(excel_btn)
+
+        main_input_layout.addWidget(excel_frame)
+        
+        # Página INEP - AGORA ABAIXO DOS BOTÕES DE SELEÇÃO
         inep_frame = self.create_frame()
         inep_frame_layout = QVBoxLayout(inep_frame)
         inep_frame_layout.setContentsMargins(24, 24, 24, 24)
@@ -156,45 +206,8 @@ class PDFFillerWindow(QDialog):
         status_layout.addStretch()
         inep_frame_layout.addLayout(status_layout)
 
-        inep_layout.addWidget(inep_frame)
-
-        # Excel import
-        excel_frame = self.create_frame()
-        excel_layout = QVBoxLayout(excel_frame)
-        excel_layout.setContentsMargins(24, 24, 24, 24)
-        excel_layout.setSpacing(16)
-
-        excel_title = QLabel("Gerar através do Excel")
-        excel_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1e293b;")
-        excel_layout.addWidget(excel_title)
-
-        excel_description = QLabel("Importe uma planilha Excel com os dados dos alunos para gerar os gabaritos em lote.")
-        excel_description.setStyleSheet("color: #64748b; font-size: 14px;")
-        excel_layout.addWidget(excel_description)
-
-        excel_btn = self.create_button("Importar Planilha Excel", self.btn_primary_style, self.btn_primary_hover, self.btn_primary_pressed)
-        excel_btn.clicked.connect(self.gerar_atraves_excel)
-        excel_layout.addWidget(excel_btn)
-
-        inep_layout.addWidget(excel_frame)
-
-        # Botão para selecionar modelo PDF
-        btn_selecionar_modelo = QPushButton("Selecionar Modelo PDF")
-        btn_selecionar_modelo.setStyleSheet(self.btn_secondary_style)
-        btn_selecionar_modelo.clicked.connect(self.selecionar_modelo_pdf)
-
-        self.model_name = QLabel(os.path.basename(self.modelo_path))
-        self.model_name.setStyleSheet("font-weight: bold; color: #334155; font-size: 14px; margin-top: 6px;")
-
-        modelo_layout = QHBoxLayout()
-        modelo_layout.addWidget(QLabel("Modelo atual:"))
-        modelo_layout.addWidget(self.model_name)
-        modelo_layout.addStretch()
-        modelo_layout.addWidget(btn_selecionar_modelo)
-
-        inep_layout.addLayout(modelo_layout)
-
-        inep_layout.addStretch()
+        main_input_layout.addWidget(inep_frame)
+        main_input_layout.addStretch()
 
         # Página turma
         turma_page = QWidget()
@@ -330,12 +343,7 @@ class PDFFillerWindow(QDialog):
         """)
         table_layout = QVBoxLayout(table_container)
         table_layout.setContentsMargins(4, 4, 4, 4)
-        table_layout.addWidget(self.alunos_count)
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setWidget(table_container)
-        alunos_layout.addWidget(scroll_area)
+        # Removido: table_layout.addWidget(self.alunos_count) - já está acima da barra de busca
 
         self.alunos_table = QTableWidget()
         self.alunos_table.setColumnCount(6)
@@ -355,7 +363,14 @@ class PDFFillerWindow(QDialog):
         self.alunos_table.itemSelectionChanged.connect(self.on_aluno_selected)
 
         table_layout.addWidget(self.alunos_table)
-        alunos_layout.addWidget(table_container)
+
+        # Adiciona a scroll area ao layout principal do alunos_frame, envolvendo table_container
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setWidget(table_container) # table_container é o widget que contém a tabela
+        alunos_layout.addWidget(scroll_area)
+
 
         turma_layout.addWidget(alunos_frame)
 
@@ -389,7 +404,7 @@ class PDFFillerWindow(QDialog):
         action_layout.addWidget(self.gerar_pdf_btn)
         turma_layout.addWidget(action_frame)
 
-        self.stacked_widget.addWidget(inep_page)
+        self.stacked_widget.addWidget(main_input_page) # Adiciona a página principal (agora main_input_page)
         self.stacked_widget.addWidget(turma_page)
 
         footer_frame = self.create_frame()
@@ -630,8 +645,6 @@ class PDFFillerWindow(QDialog):
         self.alunos_count.setText(f"({len(alunos_filtrados)} de {len(alunos_turma)})")
         self.filtro_info.setText(f"Filtro ativo: '{texto_busca}'")
         self.filtro_info.setVisible(True)
-
-        # Não existe self.table_status no seu código, removido
 
         self.gerar_pdf_btn.setEnabled(len(alunos_filtrados) > 0)
 
