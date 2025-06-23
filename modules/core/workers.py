@@ -20,6 +20,8 @@ from modules.core.student_api import StudentAPIClient
 from modules.core.detector_matricula import DetectorMatricula
 from modules.utils import logger
 from modules.DB.operations import buscar_por_matricula_excel
+from modules.core.exporter import importar_para_google_sheets
+
 
 def resource_path(relative_path):
     """
@@ -114,12 +116,13 @@ def preprocess_roi_avancado(roi_pil, debug_folder=None, idx=0):
     return Image.fromarray(processed_versions['combined'])
 
 class ProcessWorker(QRunnable):
-    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido, client: StudentAPIClient):
+    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido, grid_rois, client: StudentAPIClient):
         super().__init__()
         self.pdf_paths = pdf_paths
         self.config = config
         self.n_alternativas = n_alternativas
         self.dpi_escolhido = dpi_escolhido
+        self.grid_rois = grid_rois 
         self.client = client
         self.signals = WorkerSignals()
         self.detector_matricula = DetectorMatricula(config)
@@ -175,7 +178,7 @@ class ProcessWorker(QRunnable):
                 logger.error(msg)
                 self.signals.finished.emit([])
                 return
-            grid_rois = self.config["grid_rois"]
+            grid_rois = self.grid_rois
             pdf_count = len(self.pdf_paths)
             passo = 80 // max(pdf_count, 1)
             all_pages = []
@@ -249,7 +252,7 @@ class ProcessWorker(QRunnable):
                         grid_rois=grid_rois,
                         num_alternativas=self.n_alternativas,
                         threshold_fill=threshold_fill,
-                        debug=False, 
+                        debug=True, 
                         debug_folder=debug_subdir
                     )
                     respostas_ordenadas = {}
@@ -323,7 +326,27 @@ class ProcessWorker(QRunnable):
                 self.signals.progress.emit((idx+1) * passo)
                 logger.debug(f"[Worker] PDF {idx+1}/{pdf_count} completed")
             logger.info(f"[Worker] Enhanced processing completed. Total pages: {len(all_pages)}")
+            
+            # Depois de processar tudo:
+            logger.info(f"[Worker] Enhanced processing completed. Total pages: {len(all_pages)}")
+
+            # Exportar para Google Sheets uma única vez
+            google_sheet_id = getattr(self, "google_sheet_id_dinamico", None)
+            if not google_sheet_id:
+                google_sheet_id = self.config.get("google_sheet_id", None)
+
+            if not google_sheet_id:
+                logger.info("[Worker] Nenhum link do Google Sheets fornecido. Exportação ignorada.")
+            else:
+                try:
+                    logger.info("[Worker] Iniciando exportação para Google Sheets...")
+                    importar_para_google_sheets(all_pages, google_sheet_id, "credentials.json")
+                except Exception as e:
+                    logger.error(f"[Worker] Erro ao exportar para Google Sheets: {e}", exc_info=True)
+
+            # Finaliza com signal de sucesso
             self.signals.finished.emit(all_pages)
+            
         except Exception as e:
             logger.error(f"Enhanced Worker error: {e}", exc_info=True)
             self.signals.error.emit(str(e))

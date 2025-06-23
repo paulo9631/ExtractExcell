@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QGroupBox, QGridLayout,
     QSplitter, QFormLayout, QComboBox, QSlider, QHBoxLayout, QMessageBox,
     QToolButton, QGraphicsOpacityEffect, QSpacerItem, QSizePolicy,
-    QDialog, QPushButton, QFrame, QStackedWidget
+    QDialog, QPushButton, QFrame, QStackedWidget, QLineEdit
 )
 
 from modules.core.converter import converter_pdf_em_imagens
@@ -142,7 +142,7 @@ class GabaritoApp(QMainWindow):
         pass
 
     def initUI(self):
-        self.setWindowTitle("Leitor de Gabaritos IDEEDUTEC")
+        self.setWindowTitle(" ")
         self.setMinimumSize(1200, 800)
         QApplication.instance().setFont(QFont("Segoe UI", 10))
 
@@ -164,7 +164,7 @@ class GabaritoApp(QMainWindow):
         toolbar.setStyleSheet("""
             QToolBar { 
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-                                           stop:0 #10b981, stop:1 #059669);
+                                        stop:0 #10b981, stop:1 #059669);
                 spacing: 10px; 
                 padding: 8px 15px; 
                 border-bottom: 1px solid #047857;
@@ -196,11 +196,13 @@ class GabaritoApp(QMainWindow):
         lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl.addWidget(lbl_logo)
 
-        lbl_title = QLabel("Sistema de Avaliação Diagnóstico")
+        lbl_title = QLabel("Sistema de Avaliações Diagnósticas")
         lbl_title.setStyleSheet("color:white; font-size:20px; font-weight:bold;")
         hl.addWidget(lbl_title)
 
-        btn_filler_header = ModernButton("Gabarito Preenchido", "file-text", False)
+        hl.addStretch()
+
+        btn_filler_header = ModernButton("Gerar Gabaritos", "file-text", False)
         btn_filler_header.setFixedHeight(40)
         btn_filler_header.clicked.connect(self.abrir_pdf_filler)
         btn_filler_header.setStyleSheet("""
@@ -221,10 +223,11 @@ class GabaritoApp(QMainWindow):
             }
         """)
 
-        hl.addStretch()
         hl.addWidget(btn_filler_header)
+
         toolbar.addWidget(header)
 
+        # Layout principal
         main = QWidget()
         main.setStyleSheet("""
             QWidget {
@@ -235,6 +238,7 @@ class GabaritoApp(QMainWindow):
         ml.setContentsMargins(20, 20, 20, 20)
         ml.setSpacing(20)
 
+        # Cards com informações
         self.card_pdfs = InfoCard("PDFs Selecionados", "0", "file-text", "#3b82f6")
         self.card_quest = InfoCard("Total de Páginas", "0", "layers", "#10b981")
         self.card_status = InfoCard("Status", "Aguardando", "activity", "#f59e0b")
@@ -246,6 +250,7 @@ class GabaritoApp(QMainWindow):
         info_layout.addWidget(self.card_status)
         ml.addLayout(info_layout)
 
+        # Splitter para separar as áreas
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(1)
@@ -255,6 +260,7 @@ class GabaritoApp(QMainWindow):
             }
         """)
 
+        # Configura a parte esquerda
         left = QFrame()
         left.setStyleSheet("""
             QFrame {
@@ -331,6 +337,7 @@ class GabaritoApp(QMainWindow):
 
         ll.addWidget(btn_container)
 
+        # Configura a parte direita
         right = QFrame()
         right.setStyleSheet("""
             QFrame {
@@ -369,7 +376,7 @@ class GabaritoApp(QMainWindow):
         self.combo_alt = QComboBox()
         self.combo_alt.addItem("5 alternativas", 5)
         self.combo_alt.addItem("4 alternativas", 4)
-        self.combo_alt.setCurrentIndex(0)
+        self.combo_alt.setCurrentIndex(1)
         alt_layout.addWidget(self.combo_alt)
         rl.addWidget(grp_alt)
 
@@ -379,7 +386,7 @@ class GabaritoApp(QMainWindow):
         self.res_combo.addItem("150 DPI", 150)
         self.res_combo.addItem("200 DPI", 200)
         self.res_combo.addItem("300 DPI", 300)
-        self.res_combo.setCurrentIndex(1)
+        self.res_combo.setCurrentIndex(2)
         res_layout.addWidget(self.res_combo)
         rl.addWidget(grp_res)
 
@@ -394,6 +401,25 @@ class GabaritoApp(QMainWindow):
         thresh_layout.addWidget(self.slider)
         thresh_layout.addWidget(self.lbl_thresh, alignment=Qt.AlignmentFlag.AlignRight)
         rl.addWidget(grp_thresh)
+
+        grp_quest = QGroupBox("Quantidade de Questões")
+        quest_layout = QVBoxLayout(grp_quest)
+        self.combo_quest = QComboBox()
+        self.combo_quest.addItem("10 questões", 10)
+        self.combo_quest.addItem("20 questões", 20)
+        self.combo_quest.addItem("30 questões", 30)
+        self.combo_quest.addItem("40 questões", 40)
+        self.combo_quest.setCurrentIndex(1)  # Padrão: 20
+        quest_layout.addWidget(self.combo_quest)
+        rl.addWidget(grp_quest)
+        
+        grp_google = QGroupBox("Link do Google Sheets (obrigatório)")
+        google_layout = QVBoxLayout(grp_google)
+        self.google_sheet_input = QLineEdit()
+        self.google_sheet_input.setPlaceholderText("Cole aqui o link do Google Sheets...")
+        google_layout.addWidget(self.google_sheet_input)
+        rl.addWidget(grp_google)
+
 
         self.progress = ModernProgressBar()
         rl.addWidget(self.progress)
@@ -464,9 +490,54 @@ class GabaritoApp(QMainWindow):
 
     def criar_thumbnails(self):
         for idx, pdf_path in enumerate(self.pdf_paths):
+            # Container para stack thumbnail + botão X
+            container = QFrame()
+            container.setStyleSheet("QFrame { border: none; }")
+            container.setFixedSize(150, 200)  # Ajuste conforme seu PDFThumbnail
+
+            # Usar layout de pilha para sobrepor o botão no thumbnail
+            stack = QStackedWidget(container)
+
+            thumb_widget = QWidget()
+            vlayout = QVBoxLayout(thumb_widget)
+            vlayout.setContentsMargins(0, 0, 0, 0)
+            vlayout.setSpacing(0)
+
             thumb = PDFThumbnail(pdf_path, idx)
             thumb.clicked.connect(lambda p=pdf_path: self.abrir_preview(p))
-            self.thumb_layout.addWidget(thumb, idx // 4, idx % 4)
+            vlayout.addWidget(thumb)
+
+            # Botão X no canto
+            btn_x = QPushButton("✕", container)
+            btn_x.setFixedSize(24, 24)
+            btn_x.setStyleSheet("""
+                QPushButton {
+                    background-color: #ef4444;
+                    color: white;
+                    border: none;
+                    border-radius: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #dc2626;
+                }
+            """)
+            btn_x.move(120, 10)  # Posição no canto superior direito (ajuste se precisar)
+            btn_x.clicked.connect(lambda _, p=pdf_path: self.remover_pdf(p))
+
+            stack.addWidget(thumb_widget)
+            container_layout = QVBoxLayout(container)
+            container_layout.setContentsMargins(0, 0, 0, 0)
+            container_layout.addWidget(stack)
+
+            self.thumb_layout.addWidget(container, idx // 4, idx % 4)
+
+    def remover_pdf(self, pdf_path):
+        if pdf_path in self.pdf_paths:
+            self.pdf_paths.remove(pdf_path)
+            self.limpar_thumbnails()
+            self.criar_thumbnails()
+            self.card_pdfs.set_value(str(len(self.pdf_paths)))
 
     def abrir_preview(self, pdf_path):
         dlg = PDFPreviewDialog(pdf_path, self)
@@ -513,45 +584,75 @@ class GabaritoApp(QMainWindow):
         self.atualizar_status("Processando gabaritos...", "info")
         self.progress.setValue(5)
         self.config["threshold_fill"] = self.slider.value() / 100
+
+        n_questoes = self.combo_quest.currentData()
+        grid_rois = self.config["grid_rois"].get(str(n_questoes), [])
+
+        # Escolhe o template certo:
+        template_path = self.config["template_path"].get(str(n_questoes), None)
+
+        # Atualiza o config para este processamento:
+        self.config["template_path_atual"] = template_path
+        
         res_txt = self.res_combo.currentText()
         dpi = 300 if "300" in res_txt else 200 if "200" in res_txt else 150
 
+        link_google = self.google_sheet_input.text().strip()
+        if not link_google:
+            QMessageBox.warning(self, "Erro", "Você deve colar o link do Google Sheets antes de processar!")
+            self.btn_processar.setEnabled(True)
+            self.btn_processar.setText("Iniciar Processamento")
+            return
+        
         self.btn_processar.setEnabled(False)
         self.btn_processar.setText("Processando...")
-
+        
+    
         worker = ProcessWorker(
             pdf_paths=self.pdf_paths,
             config=self.config,
             n_alternativas=self.combo_alt.currentData(),
             dpi_escolhido=dpi,
+            grid_rois=grid_rois,
             client=self.client
         )
+        worker.google_sheet_id_dinamico = link_google  
+        worker.signals.finished.connect(self.processamento_concluido)
+        worker.signals.error.connect(self.mostrar_erro)
         worker.signals.progress.connect(self.progress.setValue)
         worker.signals.message.connect(self.atualizar_status)
         worker.signals.error.connect(lambda e: QMessageBox.critical(self, "Erro", e))
         worker.signals.finished.connect(self.on_process_finished)
         self.threadpool.start(worker)
+    
+    def processamento_concluido(self, resultado):
+            self.btn_processar.setEnabled(True)
+            self.btn_processar.setText("Iniciar Processamento")
+            QMessageBox.information(self, "Concluído", "Processamento e exportação concluídos com sucesso! 🚀")
 
-    def on_process_finished(self, all_pages):
-        self.progress.setValue(90)
+    def mostrar_erro(self, erro):
         self.btn_processar.setEnabled(True)
         self.btn_processar.setText("Iniciar Processamento")
+        QMessageBox.critical(self, "Erro", f"Ocorreu um erro durante o processamento ou exportação:\n\n{erro}")
+
+
+    def on_process_finished(self, all_pages):
+        self.btn_processar.setEnabled(True)
+        self.btn_processar.setText("Iniciar Processamento")
+        self.progress.setValue(90)
+
         if not all_pages:
             self.progress.setValue(100)
             self.atualizar_status("Processamento concluído (sem resultados).", "warning")
+            QMessageBox.warning(self, "Aviso", "Processamento concluído mas sem resultados.")
             return
+
         self.resultados = all_pages
         dlg = ResultadoDialog(all_pages, self)
         dlg.exec()
-        reply = QMessageBox.question(self, "Exportar", "Deseja exportar os resultados para Excel?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            path, _ = QFileDialog.getSaveFileName(self, "Salvar Planilha", "", "XLSX (*.xlsx)")
-            if path:
-                importar_para_planilha(all_pages, path)
-                QMessageBox.information(self, "Sucesso", f"Dados importados em:\n{path}")
+
         self.progress.setValue(100)
-        self.atualizar_status("Processamento concluído com sucesso.", "success")
+
 
     def abrir_pdf_filler(self):
         dlg = PDFFillerWindow(self.client)
@@ -564,7 +665,8 @@ class GabaritoApp(QMainWindow):
                 if hasattr(widget, 'mark_processed'):
                     widget.mark_processed(True)
                 break
-
+            
+    
     def closeEvent(self, event):
         super().closeEvent(event)
 

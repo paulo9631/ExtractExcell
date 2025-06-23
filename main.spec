@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets'), ('modules', 'modules'), ('modules/DB', 'modules/DB'), ('modules/ui', 'modules/ui'), ('modules/core', 'modules/core'), ('alunos.db', '.'), ('config.json', '.'), ('matricula_template.png', '.'), ('modelo_gabarito_base.pdf', '.'), ('pagina72dpi.png', '.'), ('template_gabarito.png', '.'), ('template_cabecalho.png', '.')],
+    datas=[('assets', 'assets'), ('modules', 'modules'), ('modules/DB', 'modules/DB'), ('modules/ui', 'modules/ui'), ('modules/core', 'modules/core'), ('alunos.db', '.'), ('config.json', '.'), ('matricula_template.png', '.'), ('modelo_gabarito_base.pdf', '.'), ('pagina72dpi.png', '.'), ('template_gabarito_10.png', '.'), ('template_gabarito_20.png', '.'), ('template_cabecalho.png', '.'), ('credentials.json', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

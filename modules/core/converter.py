@@ -1,18 +1,61 @@
-from pdf2image import convert_from_path
-import logging
+import io
+import fitz  # PyMuPDF
+import numpy as np
+import cv2
+from PIL import Image, ImageEnhance
+from pytesseract import image_to_string
+from pytesseract import Output
 
-logger = logging.getLogger('GabaritoApp.Converter')
+
+
 
 def converter_pdf_em_imagens(pdf_path, dpi=300):
     """
-    Converte o PDF em uma lista de imagens usando o dpi informado.
-    Assumimos que o Poppler está no PATH.
+    Converte um PDF em uma lista de imagens PIL de alta qualidade.
+    Aplica filtros de contraste, binarização e remoção de ruído.
     """
-    logger.info(f"Convertendo PDF: {pdf_path} (DPI: {dpi})")
-    try:
-        imagens = convert_from_path(pdf_path, dpi=dpi)
-        logger.info(f"PDF convertido com sucesso. Páginas extraídas: {len(imagens)}")
-        return imagens
-    except Exception as e:
-        logger.error(f"Erro na conversão do PDF: {e}")
-        return []
+    imagens = []
+
+    # Abrir PDF com PyMuPDF
+    pdf_document = fitz.open(pdf_path)
+    zoom = dpi / 72  # PyMuPDF usa 72dpi como base
+    mat = fitz.Matrix(zoom, zoom)
+
+    for page_num in range(len(pdf_document)):
+        page = pdf_document[page_num]
+
+        # Renderizar página como imagem
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        img_data = pix.tobytes("png")
+        pil_img = Image.open(io.BytesIO(img_data)).convert("L")  # escala de cinza
+
+        # Melhorar contraste
+        pil_img = ajustar_contraste(pil_img)
+
+        # Remover ruído e binarizar
+        pil_img = remover_ruido_e_binarizar(pil_img)
+
+        imagens.append(pil_img)
+
+    pdf_document.close()
+    return imagens
+
+
+def ajustar_contraste(pil_img, fator=1.5):
+    """
+    Aumenta o contraste da imagem PIL.
+    """
+    enhancer = ImageEnhance.Contrast(pil_img)
+    return enhancer.enhance(fator)
+
+
+def remover_ruido_e_binarizar(pil_img):
+    """
+    Remove ruídos usando mediana + aplica binarização Otsu.
+    """
+    img_np = np.array(pil_img)
+    # Filtro de mediana
+    img_np = cv2.medianBlur(img_np, 3)
+    # Binarização Otsu
+    _, img_bin = cv2.threshold(img_np, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return Image.fromarray(img_bin)
