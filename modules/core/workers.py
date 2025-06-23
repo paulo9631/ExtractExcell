@@ -1,3 +1,4 @@
+import sys
 import os
 from datetime import datetime
 import cv2
@@ -18,6 +19,19 @@ from modules.core.text_extractor import extrair_info_ocr, extrair_matricula, ext
 from modules.core.student_api import StudentAPIClient
 from modules.core.detector_matricula import DetectorMatricula
 from modules.utils import logger
+from modules.DB.operations import buscar_por_matricula_excel
+from modules.core.exporter import importar_para_google_sheets
+
+
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class WorkerSignals(QObject):
     progress = pyqtSignal(int)
@@ -25,204 +39,130 @@ class WorkerSignals(QObject):
     message = pyqtSignal(str)
     error = pyqtSignal(str)
 
-# Função auxiliar para pré-processamento alternativo quando o documento é scaneado por uma impressora
 def preprocess_roi(roi_pil):
-    """
-    Converte a ROI para escala de cinza, aplica equalização e outros ajustes,
-    buscando realçar os dígitos para uma melhor extração.
-    """
     roi_gray = np.array(roi_pil.convert("L"))
-    
-    # Aplica blur para reduzir ruído
-    roi_gray = cv2.GaussianBlur(roi_gray, (3, 3), 0)
-    
-    # Equalização de histograma
-    roi_eq = cv2.equalizeHist(roi_gray)
-    
-    # CLAHE para melhorar ainda mais o contraste
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    roi_eq = clahe.apply(roi_eq)
-    
-    # Threshold adaptativo
-    roi_bin = cv2.adaptiveThreshold(
-        roi_eq, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+    roi_gray = cv2.bilateralFilter(roi_gray, 9, 75, 75)
+    roi_gray = cv2.fastNlMeansDenoising(roi_gray, None, 10, 7, 21)
+    clahe1 = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    clahe2 = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    roi_clahe1 = clahe1.apply(roi_gray)
+    roi_clahe2 = clahe2.apply(roi_gray)
+    roi_enhanced = cv2.addWeighted(roi_clahe1, 0.7, roi_clahe2, 0.3, 0)
+    kernel_sharpen = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+    roi_enhanced = cv2.filter2D(roi_enhanced, -1, kernel_sharpen)
+    _, thresh_otsu = cv2.threshold(roi_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    thresh_adaptive = cv2.adaptiveThreshold(
+        roi_enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY, 11, 2
     )
-    
-    return Image.fromarray(roi_bin)
+    _, thresh_triangle = cv2.threshold(roi_enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_TRIANGLE)
+    combined = cv2.addWeighted(thresh_otsu, 0.4, thresh_adaptive, 0.4, 0)
+    combined = cv2.addWeighted(combined, 0.8, thresh_triangle, 0.2, 0)
+    kernel_noise = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel_noise)
+    kernel_connect_h = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1))
+    kernel_connect_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 2))
+    combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel_connect_h)
+    combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel_connect_v)
+    kernel_fill = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel_fill)
+    return Image.fromarray(combined)
 
 def preprocess_roi_avancado(roi_pil, debug_folder=None, idx=0):
-    """
-    Pré-processamento avançado para ROIs de matrícula.
-    Aplica múltiplas técnicas e retorna a melhor versão.
-    
-    Args:
-        roi_pil: Imagem PIL da ROI
-        debug_folder: Pasta para salvar imagens de debug
-        idx: Índice para nomear arquivos de debug
-        
-    Returns:
-        Imagem PIL pré-processada
-    """
-    # Converte para escala de cinza
     roi_gray = np.array(roi_pil.convert("L"))
-    
-    # Versão 1: Equalização de histograma + blur
-    roi_eq = cv2.equalizeHist(roi_gray)
-    roi_eq = cv2.GaussianBlur(roi_eq, (3, 3), 0)
-    
-    # Versão 2: CLAHE para melhorar o contraste local
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    roi_clahe = clahe.apply(roi_gray)
-    
-    # Versão 3: Binarização com Otsu
-    _, roi_bin = cv2.threshold(roi_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    # Versão 4: Binarização adaptativa
-    roi_bin_adapt = cv2.adaptiveThreshold(
-        roi_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY, 11, 2
-    )
-    
-    # Versão 5: Binarização adaptativa + operações morfológicas
-    kernel = np.ones((2, 2), np.uint8)
-    roi_morph = cv2.morphologyEx(roi_bin_adapt, cv2.MORPH_CLOSE, kernel)
-    roi_morph = cv2.morphologyEx(roi_morph, cv2.MORPH_OPEN, kernel)
-    
-    # Salva as versões para debug
+    processed_versions = {}
+    roi_standard = roi_gray.copy()
+    roi_standard = cv2.bilateralFilter(roi_standard, 11, 17, 17)
+    roi_standard = cv2.fastNlMeansDenoising(roi_standard, None, 10, 7, 21)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    roi_standard = clahe.apply(roi_standard)
+    _, roi_standard_bin = cv2.threshold(roi_standard, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    processed_versions['standard'] = roi_standard_bin
+    roi_high_contrast = roi_gray.copy()
+    clahe_extreme = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(2, 2))
+    roi_high_contrast = clahe_extreme.apply(roi_high_contrast)
+    kernel_sharp = np.array([[-1,-1,-1,-1,-1],
+                            [-1,2,2,2,-1],
+                            [-1,2,8,2,-1],
+                            [-1,2,2,2,-1],
+                            [-1,-1,-1,-1,-1]]) / 8.0
+    roi_high_contrast = cv2.filter2D(roi_high_contrast, -1, kernel_sharp)
+    _, roi_high_contrast_bin = cv2.threshold(roi_high_contrast, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    processed_versions['high_contrast'] = roi_high_contrast_bin
+    roi_morph = processed_versions['high_contrast'].copy()
+    kernel_connect_h = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 1))
+    kernel_connect_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 3))
+    roi_morph = cv2.morphologyEx(roi_morph, cv2.MORPH_CLOSE, kernel_connect_h)
+    roi_morph = cv2.morphologyEx(roi_morph, cv2.MORPH_CLOSE, kernel_connect_v)
+    kernel_fill = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    roi_morph = cv2.morphologyEx(roi_morph, cv2.MORPH_CLOSE, kernel_fill)
+    kernel_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    roi_morph = cv2.morphologyEx(roi_morph, cv2.MORPH_OPEN, kernel_clean)
+    processed_versions['morphological'] = roi_morph
+    roi_edges = cv2.Canny(roi_gray, 30, 100)
+    roi_edges_dilated = cv2.dilate(roi_edges, np.ones((2,2), np.uint8), iterations=1)
+    roi_edge_enhanced = cv2.bitwise_or(processed_versions['high_contrast'], roi_edges_dilated)
+    processed_versions['edge_enhanced'] = roi_edge_enhanced
+    combined = cv2.bitwise_and(processed_versions['standard'], processed_versions['high_contrast'])
+    kernel_final = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel_final)
+    combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel_final)
+    processed_versions['combined'] = combined
     if debug_folder:
-        cv2.imwrite(os.path.join(debug_folder, f"matricula_eq_{idx}.png"), roi_eq)
-        cv2.imwrite(os.path.join(debug_folder, f"matricula_clahe_{idx}.png"), roi_clahe)
-        cv2.imwrite(os.path.join(debug_folder, f"matricula_bin_{idx}.png"), roi_bin)
-        cv2.imwrite(os.path.join(debug_folder, f"matricula_bin_adapt_{idx}.png"), roi_bin_adapt)
-        cv2.imwrite(os.path.join(debug_folder, f"matricula_morph_{idx}.png"), roi_morph)
-    
-    # Retorna a versão que geralmente funciona melhor para OCR de dígitos
-    return Image.fromarray(roi_morph)
+        os.makedirs(debug_folder, exist_ok=True)
+        for name, img in processed_versions.items():
+            debug_path = os.path.join(debug_folder, f"matricula_{name}_{idx}.png")
+            cv2.imwrite(debug_path, img)
+    return Image.fromarray(processed_versions['combined'])
 
 class ProcessWorker(QRunnable):
-    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido, client: StudentAPIClient):
+    def __init__(self, pdf_paths, config, n_alternativas, dpi_escolhido, grid_rois, client: StudentAPIClient):
         super().__init__()
         self.pdf_paths = pdf_paths
         self.config = config
         self.n_alternativas = n_alternativas
         self.dpi_escolhido = dpi_escolhido
+        self.grid_rois = grid_rois 
         self.client = client
         self.signals = WorkerSignals()
         self.detector_matricula = DetectorMatricula(config)
 
     def extrair_matricula_com_multiplas_estrategias(self, imagem_original, debug_subdir):
-        """
-        Tenta extrair a matrícula usando o DetectorMatricula melhorado.
-        
-        Args:
-            imagem_original: Imagem PIL original
-            debug_subdir: Diretório para salvar imagens de debug
-            
-        Returns:
-            Texto da matrícula extraído
-        """
-        # Usa o detector de matrículas melhorado
         if self.config.get("scanned_by_printer", False):
-            # Para documentos escaneados, usa o método especializado
             matricula, confianca = self.detector_matricula.extrair_matricula_scaneada(imagem_original, debug_subdir)
             if matricula:
-                logger.info(f"[Worker] Matrícula (scanner especializado) lida: '{matricula}' (conf: {confianca:.2f})")
+                logger.info(f"[Worker] Matrícula (scanner especializado enhanced) lida: '{matricula}' (conf: {confianca:.2f})")
                 return matricula
-        
-        # Método padrão para outros tipos de documentos
         resultado = self.detector_matricula.processar_documento(imagem_original, debug_subdir)
         matricula = resultado["matricula"]
-        
         if matricula:
-            logger.info(f"[Worker] Matrícula (detector) lida: '{matricula}' (conf: {resultado['confianca']:.2f}, tipo: {resultado['tipo']})")
+            logger.info(f"[Worker] Matrícula (detector enhanced) lida: '{matricula}' (conf: {resultado['confianca']:.2f})")
             return matricula
-        
-        # Fallback para o método antigo se o detector não encontrou nada
-        logger.info("[Worker] Detector não encontrou matrícula, tentando método antigo...")
-        
-        from pytesseract import image_to_string, Output
-        
-        resultados = []
-        
-        # Estratégia 1: Usar ROI fixa se configurada
-        if "matricula_roi" in self.config:
-            try:
-                x, y, w, h = self.config["matricula_roi"].values()
-                roi_matricula = imagem_original.crop((x, y, x+w, y+h))
-                
-                # Aplica pré-processamento avançado
-                roi_processada = preprocess_roi_avancado(roi_matricula, debug_subdir, 1)
-                
-                # Salva a ROI processada para debug
-                roi_processada.save(os.path.join(debug_subdir, "matricula_roi_processada_1.png"))
-                
-                # Configuração específica para dígitos
-                config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
-                matricula = image_to_string(roi_processada, config=config_tess, output_type=Output.STRING).strip()
-                matricula = ''.join(c for c in matricula if c.isdigit())
-                
-                logger.info(f"[Worker] Matrícula (ROI fixa) lida: '{matricula}'")
-                if matricula.isdigit() and len(matricula) >= 5:
-                    resultados.append((matricula, 0.9))  # Alta confiança para ROI fixa
-            except Exception as e:
-                logger.error(f"Erro na extração da matrícula (ROI fixa): {e}")
-        
-        # Estratégia 2: Usar template matching
-        if "matricula_template_path" in self.config:
-            try:
-                temp_cab = Image.open(self.config["matricula_template_path"])
-                
-                # Pré-processa a imagem para melhorar a detecção
-                pil_img_proc = pre_processar_imagem(imagem_original, equalizar=True, ajustar_contraste=True)
-                
-                # Detecta o template com multi-escala e rotações
-                pts_cab, score_cab = detectar_area_cabecalho_template(
-                    pil_img_proc, temp_cab, 
-                    pre_processar=True, 
-                    multi_escala=True,
-                    rotacoes=True
-                )
-                
-                logger.debug(f"[DEBUG] Score do template matching do cabeçalho: {score_cab:.2f}")
-                
-                thr_cab = self.config.get("matricula_template_threshold", 0.25)
-                
-                if score_cab >= thr_cab and pts_cab:
-                    xs = [p[0] for p in pts_cab]
-                    ys = [p[1] for p in pts_cab]
-                    x_min, x_max = min(xs), max(xs)
-                    y_min, y_max = min(ys), max(ys)
-                    
-                    # Salva a ROI detectada para debug
-                    debug_roi_path = os.path.join(debug_subdir, "debug_matricula_roi_template.png")
-                    imagem_original.crop((x_min, y_min, x_max, y_max)).save(debug_roi_path)
-                    
-                    # Extrai a matrícula da ROI detectada
-                    roi_matricula = imagem_original.crop((x_min, y_min, x_max, y_max))
-                    roi_processada = preprocess_roi_avancado(roi_matricula, debug_subdir, 2)
-                    
-                    # Salva a ROI processada para debug
-                    debug_roi_ocr_path = os.path.join(debug_subdir, "debug_matricula_roi_used_2.png")
-                    roi_processada.save(debug_roi_ocr_path)
-                    
-                    # Configuração específica para dígitos
-                    config_tess = r"--psm 7 -c tessedit_char_whitelist=0123456789"
-                    matricula = image_to_string(roi_processada, config=config_tess, output_type=Output.STRING).strip()
-                    matricula = ''.join(c for c in matricula if c.isdigit())
-                    
-                    logger.info(f"[Worker] Matrícula (template-cabeçalho) lida: '{matricula}'")
-                    if matricula.isdigit() and len(matricula) >= 5:
-                        resultados.append((matricula, score_cab))
-            except Exception as e:
-                logger.error(f"Erro no template de cabeçalho/matrícula: {e}")
-        
-        # Escolhe o melhor resultado com base na confiança
-        if resultados:
-            # Ordena por confiança (maior primeiro)
-            resultados.sort(key=lambda x: x[1], reverse=True)
-            return resultados[0][0]
-        
+        logger.info("[Worker] Detector não encontrou matrícula, tentando métodos enhanced...")
+        from modules.core.text_extractor import extrair_matricula_com_multiplas_estrategias
+        matricula_enhanced = extrair_matricula_com_multiplas_estrategias(
+            imagem_original, self.config, debug_subdir
+        )
+        if matricula_enhanced:
+            logger.info(f"[Worker] Matrícula (estratégias enhanced) lida: '{matricula_enhanced}'")
+            return matricula_enhanced
+        logger.info("[Worker] Tentando fallback final com pré-processamento avançado...")
+        try:
+            from modules.core.text_extractor import pre_processar_imagem_ocr_avancado
+            img_processed = pre_processar_imagem_ocr_avancado(imagem_original)
+            if debug_subdir:
+                img_processed.save(os.path.join(debug_subdir, "fallback_processed.png"))
+            matricula_fallback = extrair_matricula_avancado(
+                img_processed, 
+                pre_processar=False,
+                tentativas_multiplas=True, 
+                debug_folder=debug_subdir
+            )
+            if matricula_fallback:
+                logger.info(f"[Worker] Matrícula (fallback avançado) lida: '{matricula_fallback}'")
+                return matricula_fallback
+        except Exception as e:
+            logger.error(f"Erro no fallback avançado: {e}")
         return ""
 
     def run(self):
@@ -230,61 +170,60 @@ class ProcessWorker(QRunnable):
             debug_exec_id = datetime.now().strftime("%Y%m%d_%H%M%S")
             debug_dir = os.path.join("debug", debug_exec_id)
             os.makedirs(debug_dir, exist_ok=True)
-            logger.debug(f"[Worker] Debug folder created: {debug_dir}")
-
-            threshold_fill = self.config.get("threshold_fill", 0.3)
+            logger.debug(f"[Worker] Enhanced debug folder created: {debug_dir}")
+            threshold_fill = self.config.get("threshold_fill", 0.25)
             if "grid_rois" not in self.config:
                 msg = "Configuração 'grid_rois' não encontrada."
                 self.signals.error.emit(msg)
                 logger.error(msg)
                 self.signals.finished.emit([])
                 return
-
-            grid_rois = self.config["grid_rois"]
+            grid_rois = self.grid_rois
             pdf_count = len(self.pdf_paths)
             passo = 80 // max(pdf_count, 1)
             all_pages = []
-
             for idx, pdf_path in enumerate(self.pdf_paths):
                 nome_pdf = os.path.basename(pdf_path)
-                logger.debug(f"[Worker] Converting {nome_pdf} at DPI {self.dpi_escolhido}")
-                imagens = converter_pdf_em_imagens(pdf_path, dpi=self.dpi_escolhido)
+                logger.debug(f"[Worker] Converting {nome_pdf} at enhanced DPI {self.dpi_escolhido}")
+                dpi_used = self.dpi_escolhido
+                if self.config.get("scanned_by_printer", False):
+                    dpi_used = max(self.dpi_escolhido, 200)
+                    logger.debug(f"[Worker] Using enhanced DPI {dpi_used} for printer scan")
+                imagens = converter_pdf_em_imagens(pdf_path, dpi=dpi_used)
                 if not imagens:
                     msg = f"Falha ao converter PDF: {nome_pdf}"
                     self.signals.error.emit(msg)
                     logger.error(msg)
                     continue
-
-                # Guarda cópia das imagens originais para debug e extração da matrícula
                 imagens_originais = list(imagens)
-
                 pts_ref = None
                 if "template_path" in self.config:
                     try:
-                        template = Image.open(self.config["template_path"])
-                        
-                        # Pré-processa a imagem para melhorar a detecção
-                        imagem_proc = pre_processar_imagem(imagens[0], equalizar=True, ajustar_contraste=True)
-                        
-                        # Detecta o template com multi-escala e rotações
+                        template_path = resource_path(self.config["template_path"])
+                        template = Image.open(template_path)
+                        imagem_proc = pre_processar_imagem(
+                            imagens[0], 
+                            equalizar=True, 
+                            ajustar_contraste=True, 
+                            remover_ruido=True
+                        )
                         pts_ref, score = detectar_area_gabarito_template(
                             imagem_proc, template, 
                             pre_processar=True, 
                             multi_escala=True,
                             rotacoes=True
                         )
-                        
-                        logger.debug(f"[Worker] Template gabarito score: {score:.2f}")
-                        if score < 0.5:
+                        logger.debug(f"[Worker] Enhanced template gabarito score: {score:.2f}")
+                        min_score = 0.4 if self.config.get("scanned_by_printer", False) else 0.5
+                        if score < min_score:
                             aviso = f"Baixa confiança no template gabarito (score={score:.2f})"
                             self.signals.message.emit(aviso)
                             logger.debug(aviso)
                     except Exception as e:
-                        logger.error(f"Template matching do gabarito failed: {e}")
-                        self.signals.message.emit(f"Aviso: falha no template gabarito: {e}")
+                        logger.error(f"Enhanced template matching failed: {e}")
+                        self.signals.message.emit(f"Aviso: falha no template gabarito enhanced: {e}")
                 elif "pts_ref" in self.config:
                     pts_ref = self.config["pts_ref"]
-
                 if pts_ref:
                     larg = self.config.get("largura_corrigida", 800)
                     alt = self.config.get("altura_corrigida", 1200)
@@ -292,20 +231,22 @@ class ProcessWorker(QRunnable):
                     for pil_img in imagens:
                         np_img = np.array(pil_img)
                         corr = corrigir_perspectiva(np_img, pts_ref, larg, alt)
+                        if self.config.get("scanned_by_printer", False):
+                            kernel_sharpen = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+                            corr = cv2.filter2D(corr, -1, kernel_sharpen)
+                            corr = cv2.bilateralFilter(corr, 5, 50, 50)
                         imagens_corrigidas.append(Image.fromarray(corr))
                     imagens = imagens_corrigidas
-                    logger.debug(f"[Worker] Perspective corrected for {nome_pdf}")
-
+                    logger.debug(f"[Worker] Enhanced perspective correction applied for {nome_pdf}")
                 for i, pil_img_corrigida in enumerate(imagens):
                     debug_subdir = os.path.join(debug_dir, f"{nome_pdf}_pag_{i+1}")
                     os.makedirs(debug_subdir, exist_ok=True)
-                    logger.debug(f"[Worker] Processing page {i+1} of {nome_pdf}")
-
-                    # Salva a página completa original para debug
+                    logger.debug(f"[Worker] Processing page {i+1} of {nome_pdf} with enhanced methods")
                     debug_full_page = os.path.join(debug_subdir, "debug_full_page_original.png")
                     imagens_originais[i].save(debug_full_page)
-                    logger.debug(f"[Worker] Full original page saved: {debug_full_page}")
-
+                    debug_corrected_page = os.path.join(debug_subdir, "debug_full_page_corrected.png")
+                    pil_img_corrigida.save(debug_corrected_page)
+                    logger.debug(f"[Worker] Enhanced debug images saved for page {i+1}")
                     respostas = detectar_respostas_por_grid(
                         imagem=pil_img_corrigida,
                         grid_rois=grid_rois,
@@ -318,34 +259,49 @@ class ProcessWorker(QRunnable):
                     questoes_sorted = sorted(respostas.keys(), key=lambda x: int(x.split()[1]))
                     for q in questoes_sorted:
                         respostas_ordenadas[q] = respostas[q]
-
                     info_ocr = extrair_info_ocr(pil_img_corrigida)
-
                     pil_img_original = imagens_originais[i]
-                    
-                    # Usa a nova função para extrair matrícula com múltiplas estratégias
                     matricula_texto = self.extrair_matricula_com_multiplas_estrategias(
                         pil_img_original, debug_subdir
                     )
-                    
                     dados_api = {}
                     if matricula_texto.isdigit():
-                        logger.info(f"[Worker] Buscando estudante para matrícula {matricula_texto}")
+                        logger.info(f"[Worker] Buscando estudante para matrícula {matricula_texto} (enhanced)")
                         try:
                             resultado = self.client.buscar_por_matriculas([matricula_texto])
                             dados_api = resultado[0] if resultado else {}
-
-                            logger.info(f"[Worker] API returned for {matricula_texto}: {dados_api}")
                             if dados_api:
-                                info_ocr["nome_aluno"] = dados_api.get("name", info_ocr.get("nome_aluno", ""))
-                                info_ocr["escola"] = dados_api.get("school", info_ocr.get("escola", ""))
-                                info_ocr["turma"] = dados_api.get("class", info_ocr.get("turma", ""))
+                                logger.info(f"[Worker] Dados API encontrados: {dados_api}")
                             else:
-                                logger.debug(f"[Worker] API não retornou dados para matrícula {matricula_texto}")
+                                logger.info(f"[Worker] API não retornou dados para matrícula {matricula_texto}")
                         except Exception as e:
-                            logger.error(f"Erro na busca do estudante: {e}")
-                            self.signals.message.emit(f"Aviso: falha ao buscar estudante: {e}")
-
+                            logger.warning(f"[Worker] Erro ao buscar na API: {e}")
+                            dados_api = {}
+                        if not dados_api:
+                            logger.info(f"[Worker] API não encontrou matrícula {matricula_texto}. Buscando localmente...")
+                            try:
+                                aluno_local = buscar_por_matricula_excel(matricula_texto)
+                                if aluno_local:
+                                    dados_api = {
+                                        "name": aluno_local.nome,
+                                        "school": aluno_local.escola,
+                                        "class": aluno_local.turma,
+                                        "turn": aluno_local.turno,
+                                        "birthDate": aluno_local.data_nascimento
+                                    }
+                                    logger.info(f"[Worker] Dados locais encontrados: {dados_api}")
+                                else:
+                                    logger.info(f"[Worker] Matrícula {matricula_texto} não encontrada localmente")
+                            except Exception as e:
+                                logger.error(f"[Worker] Erro ao buscar localmente: {e}")
+                        if dados_api:
+                            info_ocr["nome_aluno"] = dados_api.get("name", info_ocr.get("nome_aluno", ""))
+                            info_ocr["escola"] = dados_api.get("school", info_ocr.get("escola", ""))
+                            info_ocr["turma"] = dados_api.get("class", info_ocr.get("turma", ""))
+                            info_ocr["turno"] = dados_api.get("turn", "")
+                            info_ocr["data_nascimento"] = dados_api.get("birthDate", "")
+                    else:
+                        logger.warning(f"[Worker] Matrícula inválida ou não encontrada: '{matricula_texto}'")
                     page_dict = {
                         "Página": f"PDF {idx+1} Pag {i+1}",
                         "Arquivo": nome_pdf,
@@ -357,15 +313,41 @@ class ProcessWorker(QRunnable):
                             "turma": info_ocr.get("turma", ""),
                             "matricula": matricula_texto,
                             "dados_api": dados_api
+                        },
+                        "ProcessingInfo": {
+                            "dpi_used": dpi_used,
+                            "threshold_fill": threshold_fill,
+                            "template_score": score if 'score' in locals() else 0.0,
+                            "printer_scan_mode": self.config.get("scanned_by_printer", False)
                         }
                     }
                     all_pages.append(page_dict)
-
+                    logger.debug(f"[Worker] Page {i+1} processing completed successfully")
                 self.signals.progress.emit((idx+1) * passo)
+                logger.debug(f"[Worker] PDF {idx+1}/{pdf_count} completed")
+            logger.info(f"[Worker] Enhanced processing completed. Total pages: {len(all_pages)}")
+            
+            # Depois de processar tudo:
+            logger.info(f"[Worker] Enhanced processing completed. Total pages: {len(all_pages)}")
 
+            # Exportar para Google Sheets uma única vez
+            google_sheet_id = getattr(self, "google_sheet_id_dinamico", None)
+            if not google_sheet_id:
+                google_sheet_id = self.config.get("google_sheet_id", None)
+
+            if not google_sheet_id:
+                logger.info("[Worker] Nenhum link do Google Sheets fornecido. Exportação ignorada.")
+            else:
+                try:
+                    logger.info("[Worker] Iniciando exportação para Google Sheets...")
+                    importar_para_google_sheets(all_pages, google_sheet_id, "credentials.json")
+                except Exception as e:
+                    logger.error(f"[Worker] Erro ao exportar para Google Sheets: {e}", exc_info=True)
+
+            # Finaliza com signal de sucesso
             self.signals.finished.emit(all_pages)
-
+            
         except Exception as e:
-            logger.error(f"Erro no Worker: {e}", exc_info=True)
+            logger.error(f"Enhanced Worker error: {e}", exc_info=True)
             self.signals.error.emit(str(e))
             self.signals.finished.emit([])

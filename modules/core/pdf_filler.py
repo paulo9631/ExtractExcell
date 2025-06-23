@@ -1,6 +1,17 @@
 import fitz
 import os
+import sys
 from typing import List, Dict
+
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], output_path: str):
     """
@@ -10,6 +21,8 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
     :param dados_alunos: Lista de dicionários com os dados dos alunos.
     :param output_path: Caminho final para salvar o PDF combinado.
     """
+    modelo_pdf_path = resource_path(modelo_pdf_path)
+
     if not os.path.exists(modelo_pdf_path):
         raise FileNotFoundError(f"Modelo PDF não encontrado: {modelo_pdf_path}")
 
@@ -20,17 +33,19 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
         page = doc[0]
 
         coordenadas = {
-            "escola": (241, 448),
-            "nome": (51, 491),
-            "turno": (309, 491),
-            "turma": (365, 491),
-            "matricula": (53, 535),
-            "nasc_d1": (424, 491),
-            "nasc_d2": (444, 491),
-            "nasc_m1": (474, 491),
-            "nasc_m2": (494, 491),
-            "nasc_a3": (521, 491),
-            "nasc_a4": (542, 491),
+            "escola": (35, 417),
+            "nome": (36, 459),
+            "turno": (497, 417),
+            "turma": (408, 417),
+            "matricula": (319, 417),
+            "nasc_d1": (377, 459),
+            "nasc_d2": (400, 459),
+            "nasc_m1": (424, 459),
+            "nasc_m2": (448, 459),
+            "nasc_a1": (471, 459),
+            "nasc_a2": (495, 459),
+            "nasc_a3": (519, 459),
+            "nasc_a4": (542, 459),
         }
 
         fonte = "helv"
@@ -54,6 +69,8 @@ def preencher_pdf_com_info(modelo_pdf_path: str, dados_alunos: List[Dict], outpu
                     page.insert_text(coordenadas["nasc_m1"], mes[0], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                     page.insert_text(coordenadas["nasc_m2"], mes[1], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                 if len(ano) == 4:
+                    page.insert_text(coordenadas["nasc_a1"], ano[0], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
+                    page.insert_text(coordenadas["nasc_a2"], ano[1], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                     page.insert_text(coordenadas["nasc_a3"], ano[2], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
                     page.insert_text(coordenadas["nasc_a4"], ano[3], fontname=fonte, fontsize=tamanho, color=(0, 0, 0))
 

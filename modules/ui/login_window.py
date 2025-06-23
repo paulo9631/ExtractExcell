@@ -7,6 +7,7 @@ from PyQt6.QtGui import QFont, QPixmap, QIcon, QColor
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect
 
+from modules.utils import resource_path
 from modules.core.student_api import StudentAPIClient
 
 class LoginWindow(QDialog):
@@ -14,7 +15,7 @@ class LoginWindow(QDialog):
         super().__init__(parent)
         self.setWindowTitle("iDEEDUTEC - Login")
         self.setFixedSize(1200, 800)
-        self.setWindowIcon(QIcon("assets/ideedutec_icon.png"))
+        self.setWindowIcon(QIcon(resource_path("assets/ideedutec_icon.png")))
         self.client = StudentAPIClient()
         self.token = None
 
@@ -54,7 +55,7 @@ class LoginWindow(QDialog):
         header_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         logo_label = QLabel()
-        logo_pixmap = QPixmap("assets/logo_horizontal.png")
+        logo_pixmap = QPixmap(resource_path("assets/logo_horizontal.png"))
         logo_pixmap = logo_pixmap.scaled(
             200, 100,
             Qt.AspectRatioMode.KeepAspectRatio,
@@ -146,20 +147,20 @@ class LoginWindow(QDialog):
         main_layout.addWidget(card_widget, 0, Qt.AlignmentFlag.AlignHCenter)
         main_layout.addStretch(1)
 
-        self.setStyleSheet("""
-            QDialog {
+        self.setStyleSheet(f"""
+            QDialog {{
                 background: qlineargradient(
                     x1:0, y1:0, x2:0, y2:1,
                     stop:0 rgba(255,255,255,0.4), stop:1 rgba(255,255,255,0.4)
                 ), 
-                url("assets/background.jpg");
+                url("{resource_path('assets/background.jpg')}");
                 background-repeat: no-repeat;
                 background-position: center;
                 background-size: cover;
-            }
-            QLabel {
+            }}
+            QLabel {{
                 color: #333;
-            }
+            }}
         """)
 
     def create_shadow_effect(self):

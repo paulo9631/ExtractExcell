@@ -1,30 +1,45 @@
 import os
+import sys
 import cv2
 import numpy as np
 from PIL import Image
 import logging
 import pytesseract
 import re
+from pytesseract import image_to_data, Output
 
 logger = logging.getLogger('DetectorMatricula')
+
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class DetectorMatricula:
     """
     Classe para detecção e reconhecimento de matrículas em documentos,
-    usando OCR tradicional e múltiplas técnicas de pré-processamento.
+    usando OCR tradicional, ROI, fallback heurístico e pré-processamento.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, debug=False, debug_dir="debug"):
         self.config = config or {}
         self.tesseract_configs = [
             '--psm 7 -c tessedit_char_whitelist=0123456789',
             '--psm 8 -c tessedit_char_whitelist=0123456789',
             '--psm 6 -c tessedit_char_whitelist=0123456789',
             '--psm 10 -c tessedit_char_whitelist=0123456789',
-            '--psm 13 -c tessedit_char_whitelist=0123456789'
+            '--psm 13 -c tessedit_char_whitelist=0123456789',
         ]
         self.min_length = self.config.get('matricula_min_length', 5)
         self.max_length = self.config.get('matricula_max_length', 10)
+        self.debug = debug
+        self.debug_dir = debug_dir
+        os.makedirs(self.debug_dir, exist_ok=True)
 
     def processar_documento(self, imagem, debug_folder=None):
         if isinstance(imagem, np.ndarray):
@@ -49,56 +64,61 @@ class DetectorMatricula:
 
         roi_pil = self._extrair_roi_matricula(imagem_pil, debug_folder)
 
-        if roi_pil is None:
-            logger.error("Não foi possível extrair ROI da matrícula")
-            return "", 0.0
+        if roi_pil is None or roi_pil.size[0] < 10:
+            logger.warning("Não foi possível extrair ROI da matrícula. Tentando OCR geral.")
+            return self._ocr_semantico_global(imagem_pil)
 
         processed_images = self._aplicar_tecnicas_pre_processamento(roi_pil)
-
         resultados = []
 
         for technique, img in processed_images:
             img_morph = self._aplicar_morfologia_adaptativa(img)
-
             for config in self.tesseract_configs:
                 try:
-                    texto = pytesseract.image_to_string(
-                        img_morph, config=config
-                    ).strip()
-
+                    texto = pytesseract.image_to_string(img_morph, config=config).strip()
                     texto = self._corrigir_erros_comuns(texto)
-
                     if texto and self._validar_matricula(texto):
                         resultados.append((texto, 0.8))
                 except Exception as e:
                     logger.error(f"Erro OCR {technique}: {e}")
 
-        if not resultados:
-            logger.warning("Não foi possível reconhecer matrícula válida")
-            return "", 0.0
+        if resultados:
+            resultados.sort(key=lambda x: x[1], reverse=True)
+            melhor_texto, melhor_confianca = resultados[0]
+            return melhor_texto, melhor_confianca
 
-        resultados.sort(key=lambda x: x[1], reverse=True)
-        melhor_texto, melhor_confianca = resultados[0]
+        return self._ocr_semantico_global(imagem_pil)
 
-        logger.info(f"Matrícula reconhecida: '{melhor_texto}' (confiança: {melhor_confianca})")
-        return melhor_texto, melhor_confianca
+    def _ocr_semantico_global(self, imagem_pil):
+        dados = image_to_data(imagem_pil, output_type=Output.DICT, lang='por')
+        melhores = []
+
+        for i, palavra in enumerate(dados['text']):
+            texto = palavra.strip().lower()
+            conf = float(dados['conf'][i]) if str(dados['conf'][i]).replace('.', '', 1).isdigit() else 0
+            top = dados['top'][i]
+
+            if texto in ['matrícula', 'matricula']:
+                for j in range(i + 1, min(i + 5, len(dados['text']))):
+                    candidato = dados['text'][j].strip()
+                    if candidato.isdigit() and self._validar_matricula(candidato):
+                        return candidato, conf
+
+            if texto.isdigit() and self._validar_matricula(texto):
+                melhores.append((texto, conf, top))
+
+        if melhores:
+            melhores.sort(key=lambda x: (x[2], -x[1]))
+            melhor = melhores[0]
+            return melhor[0], melhor[1]
+
+        return "", 0.0
 
     def _extrair_roi_matricula(self, imagem_pil, debug_folder=None):
-        if "matricula_roi" in self.config:
-            try:
-                x, y, w, h = self.config["matricula_roi"].values()
-                roi = imagem_pil.crop((x, y, x+w, y+h))
-                if debug_folder:
-                    os.makedirs(debug_folder, exist_ok=True)
-                    roi.save(os.path.join(debug_folder, "matricula_roi.png"))
-                return roi
-            except Exception as e:
-                logger.error(f"Erro ao extrair ROI fixa: {e}")
-
         if "matricula_template_path" in self.config:
             try:
                 from modules.core.detector import detectar_area_cabecalho_template, pre_processar_imagem
-                template_path = self.config["matricula_template_path"]
+                template_path = resource_path(self.config["matricula_template_path"])
                 if os.path.exists(template_path):
                     template = Image.open(template_path)
                     img_proc = pre_processar_imagem(imagem_pil)
@@ -115,31 +135,6 @@ class DetectorMatricula:
             except Exception as e:
                 logger.error(f"Erro no template matching: {e}")
 
-        try:
-            from modules.core.detector import detectar_matricula_por_contornos
-            roi_coords = detectar_matricula_por_contornos(imagem_pil)
-            if roi_coords:
-                x, y, w, h = roi_coords
-                roi = imagem_pil.crop((x, y, x+w, y+h))
-                if debug_folder:
-                    roi.save(os.path.join(debug_folder, "matricula_roi_contornos.png"))
-                return roi
-        except Exception as e:
-            logger.error(f"Erro na detecção por contornos: {e}")
-
-        try:
-            from modules.core.detector import detectar_matricula_por_hough
-            roi_coords = detectar_matricula_por_hough(imagem_pil)
-            if roi_coords:
-                x, y, w, h = roi_coords
-                roi = imagem_pil.crop((x, y, x+w, y+h))
-                if debug_folder:
-                    roi.save(os.path.join(debug_folder, "matricula_roi_hough.png"))
-                return roi
-        except Exception as e:
-            logger.error(f"Erro na detecção por Hough: {e}")
-
-        logger.warning("Não foi possível detectar ROI específica, usando imagem completa")
         return imagem_pil
 
     def _aplicar_tecnicas_pre_processamento(self, imagem_pil):
@@ -191,9 +186,60 @@ class DetectorMatricula:
             texto = texto.replace(char, corr)
         return re.sub(r'\D', '', texto)
 
+    def detectar_area_matricula(self, imagem, index=0):
+        altura, largura = imagem.shape[:2]
+
+        roi_x_inicio = int(0.05 * largura)
+        roi_x_fim = int(0.35 * largura)
+        roi_y_inicio = int(0.18 * altura)
+        roi_y_fim = int(0.30 * altura)
+
+        area_matricula = imagem[roi_y_inicio:roi_y_fim, roi_x_inicio:roi_x_fim]
+
+        area_matricula = cv2.cvtColor(area_matricula, cv2.COLOR_BGR2GRAY)
+        area_matricula = cv2.threshold(area_matricula, 0, 255,
+                                       cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        area_matricula = cv2.medianBlur(area_matricula, 3)
+
+        if self.debug:
+            debug_path = os.path.join(self.debug_dir, f"matricula_roi_{index}.png")
+            cv2.imwrite(debug_path, area_matricula)
+
+        return area_matricula
+
+    def detectar_matricula(self, imagem, index=0):
+        roi = self.detectar_area_matricula(imagem, index=index)
+
+        header_roi = cv2.equalizeHist(roi)
+        header_roi = cv2.adaptiveThreshold(
+            header_roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 11, 2
+        )
+
+        if self.debug:
+            debug_header = os.path.join(self.debug_dir, f"matricula_header_{index}.png")
+            cv2.imwrite(debug_header, header_roi)
+
+        config_tess = "--psm 6"
+        data = pytesseract.image_to_data(header_roi, output_type=pytesseract.Output.DICT, config=config_tess)
+
+        matricula = ""
+        for i, word in enumerate(data['text']):
+            if word.strip().lower() == "matricula":
+                if i + 1 < len(data['text']):
+                    candidato = data['text'][i + 1].strip()
+                    if candidato.isdigit():
+                        matricula = candidato
+                        break
+
+        if not matricula:
+            fallback_text = pytesseract.image_to_string(header_roi, config="--psm 7")
+            fallback_text = fallback_text.replace("\n", " ")
+            match = re.search(r'\d{5,}', fallback_text)
+            if match:
+                matricula = match.group(0)
+
+        return matricula.strip()
+
     def _validar_matricula(self, texto):
-        if not texto.isdigit():
-            return False
-        if not (self.min_length <= len(texto) <= self.max_length):
-            return False
-        return True
+        return texto.isdigit() and self.min_length <= len(texto) <= self.max_length

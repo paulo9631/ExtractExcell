@@ -13,3 +13,9 @@ openpyxl
 PyPDF2
 cryptography
 PyJWT
+sqlmodel
+pyinstaller
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2

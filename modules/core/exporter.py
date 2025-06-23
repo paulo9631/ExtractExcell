@@ -1,5 +1,23 @@
+import sys
+import os
 import pandas as pd
 from openpyxl import load_workbook
+import gspread
+from google.oauth2.service_account import Credentials
+import shutil
+import tempfile
+from modules.utils import resource_file_out
+
+
+def resource_path(relative_path):
+    """
+    Retorna o caminho absoluto para recursos, considerando o bundle do PyInstaller.
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def encontrar_proxima_linha_vazia(ws, linha_inicial=30):
     resposta_cols = ["I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
@@ -20,11 +38,13 @@ def encontrar_proxima_linha_vazia(ws, linha_inicial=30):
 def importar_para_planilha(dados, caminho_template):
     print(f"[LOG] Função importar_para_planilha chamada para o arquivo '{caminho_template}'. Número de registros a importar: {len(dados)}")
     
+    real_path = resource_path(caminho_template)
+
     try:
-        book = load_workbook(caminho_template)
-        print(f"[LOG] Planilha '{caminho_template}' carregada com sucesso.")
+        book = load_workbook(real_path)
+        print(f"[LOG] Planilha '{real_path}' carregada com sucesso.")
     except Exception as e:
-        print(f"[ERRO] Falha ao carregar '{caminho_template}': {e}")
+        print(f"[ERRO] Falha ao carregar '{real_path}': {e}")
         return
     
     sheet_name = "GERAL"
@@ -82,7 +102,81 @@ def importar_para_planilha(dados, caminho_template):
         print(f"[LOG] Inserido registro {idx+1} na linha {row_inicial}")
 
     try:
-        book.save(caminho_template)
-        print(f"[LOG] Dados salvos na planilha '{caminho_template}'.")
+        book.save(real_path)
+        print(f"[LOG] Dados salvos na planilha '{real_path}'.")
     except Exception as e:
-        print(f"[ERRO] Falha ao salvar '{caminho_template}': {e}")
+        print(f"[ERRO] Falha ao salvar '{real_path}': {e}")
+
+# ============ GOOGLE SHEETS ============= #
+
+def extrair_id_google_sheets(link_ou_id: str) -> str:
+    """
+    Extrai o ID de uma URL do Google Sheets ou retorna o próprio ID se for passado direto.
+    """
+    if "docs.google.com" in link_ou_id:
+        return link_ou_id.split("/d/")[1].split("/")[0]
+    return link_ou_id
+
+def importar_para_google_sheets(dados, sheet_link_ou_id, credentials_json="credentials.json"):
+    from operator import itemgetter
+    sheet_id = extrair_id_google_sheets(sheet_link_ou_id)
+
+    scopes = ['https://www.googleapis.com/auth/spreadsheets']
+    creds = Credentials.from_service_account_file(resource_file_out(credentials_json), scopes=scopes)
+    client = gspread.authorize(creds)
+    sh = client.open_by_key(sheet_id)
+
+    print(f"[OK] Conectado à planilha ID: {sheet_id}")
+
+    # ✅ Ordenar todos os dados pelo nome do aluno, insensível a maiúsculas
+    dados_ordenados = sorted(dados, key=lambda x: x.get("OCR", {}).get("nome_aluno", "").lower())
+
+    for idx, item in enumerate(dados_ordenados):
+        ocr_info = item.get("OCR", {})
+        respostas = item.get("Respostas", {})
+
+        escola = ocr_info.get("escola", "SEM_ESCOLA").strip().upper()
+        turma = ocr_info.get("turma", "SEM_TURMA").strip().upper()
+        aba_nome = f"{escola} ({turma})"
+        print(f"[INFO] Aluno {idx+1} → Aba: {aba_nome}")
+
+        try:
+            ws = sh.worksheet(aba_nome)
+        except Exception:
+            print(f"[WARN] Aba '{aba_nome}' não existe. Usando RESUMO GERAIS.")
+            try:
+                ws = sh.worksheet("RESUMO GERAIS")
+            except Exception:
+                print(f"[ERROR] RESUMO GERAIS também não existe. Criando fallback.")
+                ws = sh.add_worksheet(title="RESUMO GERAIS", rows="1000", cols="30")
+
+        map_colunas = {
+            "matricula": "E",
+            "nome_aluno": "C",
+        }
+
+        map_questoes = {
+            1: "F", 2: "G", 3: "H", 4: "I", 5: "J",
+            6: "K", 7: "L", 8: "M", 9: "N", 10: "O", 11: "P",
+            12: "Q", 13: "R", 14: "S", 15: "T", 16: "U", 17: "V",
+            18: "W", 19: "X", 20: "Y"
+        }
+
+        col_matricula = ws.col_values(5)
+        linha = len(col_matricula) + 1
+
+        ws.update(f"{map_colunas['matricula']}{linha}", [[ocr_info.get("matricula", "")]])
+        ws.update(f"{map_colunas['nome_aluno']}{linha}", [[ocr_info.get("nome_aluno", "")]])
+
+        for questao, resposta in respostas.items():
+            try:
+                numero = int(questao.replace("Questao ", ""))
+                coluna = map_questoes.get(numero)
+                if coluna:
+                    ws.update(f"{coluna}{linha}", [[resposta]])
+            except Exception as e:
+                print(f"[WARN] Problema ao atualizar '{questao}': {e}")
+
+        print(f"[OK] Aluno {idx+1} salvo na linha {linha} da aba '{ws.title}'")
+
+    print("[OK] Exportação para Google Sheets concluída com sucesso")
