@@ -8,7 +8,7 @@ pymupdf
 reportlab
 pymupdf
 requests
-opencv
+#opencv ja ta incluso no opencv-python
 openpyxl
 PyPDF2
 cryptography
