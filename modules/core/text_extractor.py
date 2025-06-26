@@ -5,7 +5,7 @@ import pytesseract
 import re
 import logging
 from PIL import Image
-from scipy import ndimage
+#from scipy import ndimage
 
 logger = logging.getLogger('GabaritoApp.TextExtractor')
 
