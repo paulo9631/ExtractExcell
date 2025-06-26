@@ -358,11 +358,17 @@ class GabaritoApp(QMainWindow):
                 color: #1e293b;
             }
             QComboBox {
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 14px;
-                min-height: 30px;
+            border-width: 1px;
+            border-style: solid;
+            border-color: #cbd5e1;
+            border-radius: 6px;
+            padding-top:    6px;
+            padding-bottom: 6px;
+            padding-left:  12px;
+            padding-right: 12px;
+            font-size: 14px;
+            min-height: 30px;
+            color: #0f172a;
             }
             QSlider {
                 min-height: 30px;
