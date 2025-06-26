@@ -128,7 +128,24 @@ class DetectorMatricula:
                         ys = [p[1] for p in pts]
                         x_min, x_max = min(xs), max(xs)
                         y_min, y_max = min(ys), max(ys)
-                        roi = imagem_pil.crop((x_min, y_min, x_max, y_max))
+
+                        # Pega do config os valores de padding e offset
+                        pad_left   = self.config.get("matricula_template_pad_left", 0)
+                        pad_right  = self.config.get("matricula_template_pad_right",0)
+                        pad_top    = self.config.get("matricula_template_pad_top",0)
+                        pad_bottom = self.config.get("matricula_template_pad_bottom", 0)
+                        off_x      = self.config.get("matricula_template_offset_x",0)
+                        off_y      = self.config.get("matricula_template_offset_y",0)
+
+                        w, h = imagem_pil.width, imagem_pil.height
+
+                        # Calcula as novas bordas, aplicando padding assimétrico e offset
+                        x1 = max(0,               x_min - pad_left  + off_x)
+                        y1 = max(0,               y_min - pad_top   + off_y)
+                        x2 = min(w, x_max + pad_right + off_x)
+                        y2 = min(h, y_max + pad_bottom+ off_y)
+
+                        roi = imagem_pil.crop((x1, y1, x2, y2))
                         if debug_folder:
                             roi.save(os.path.join(debug_folder, "matricula_roi_template.png"))
                         return roi
